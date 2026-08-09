@@ -25,4 +25,12 @@ import tilelang.language as T
 
 
 def softmax(x: torch.Tensor) -> torch.Tensor:
-    raise NotImplementedError("从这里开始写")
+    M, N = x.shape
+    dtype = x.dtype
+    @T.prim_func
+    def main(
+        A: T.Buffer((M, N), dtype),
+    ):
+        with T.Kernel(N, 1,threads=128) as (bx, by):
+
+

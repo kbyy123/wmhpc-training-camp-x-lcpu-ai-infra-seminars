@@ -20,4 +20,33 @@ contract: 实现 run(program) -> (regs, cycles)
 
 
 def run(program):
-    raise NotImplementedError("从这里开始写")
+    lanes = list(range(32))
+    cycles = 0
+    def execute(inst, active):
+        op = inst[0]
+        if op in ("add", "mul"):
+            k = inst[1]
+            if any(active):
+                nonlocal cycles
+                cycles += 1
+                for i in range(32):
+                    if active[i]:
+                        if op == "add":
+                            lanes[i] += k
+                        else:
+                            lanes[i] *= k
+        if op == "if_lt":
+            t, then_prog, else_prog = inst[1:]
+            then_active = [active[i] and lanes[i] < t for i in range(32)]
+            else_active = [active[i] and lanes[i] >= t for i in range(32)]
+            for then_inst in then_prog:
+                execute(then_inst, then_active)
+            for else_inst in else_prog:
+                execute(else_inst, else_active)
+        return active
+
+    active = [True for i in range(32)]
+    for inst in program:
+        active = execute(inst, active)
+
+    return lanes, cycles 

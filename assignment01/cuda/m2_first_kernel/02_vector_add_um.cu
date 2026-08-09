@@ -25,20 +25,20 @@ int main() {
     // 放进计时窗口会把要观察的差距完全淹掉。
     CUDA_CHECK(cudaFree(0));
 
-    float *h_a = (float *)malloc(bytes);
-    float *h_b = (float *)malloc(bytes);
-    float *h_c = (float *)malloc(bytes);
-    fill_random(h_a, n, 1);
-    fill_random(h_b, n, 2);
+    float *a = nullptr;
+    float *b = nullptr;
+    float *c = nullptr;
+
+    CUDA_CHECK(cudaMallocManaged(&a, bytes));
+    CUDA_CHECK(cudaMallocManaged(&b, bytes));
+    CUDA_CHECK(cudaMallocManaged(&c, bytes));
+
+    fill_random(a, n, 1);
+    fill_random(b, n, 2);
 
     // 期望的校验和，host 上先算好，同样不计入计时。
     double want = 0;
-    for (int i = 0; i < n; i++) want += (double)(h_a[i] + h_b[i]);
-
-    float *d_a, *d_b, *d_c;
-    CUDA_CHECK(cudaMalloc(&d_a, bytes));
-    CUDA_CHECK(cudaMalloc(&d_b, bytes));
-    CUDA_CHECK(cudaMalloc(&d_c, bytes));
+    for (int i = 0; i < n; i++) want += (double)(a[i] + b[i]);
 
     int threads = 256;
     int blocks = (n + threads - 1) / threads;
@@ -46,17 +46,12 @@ int main() {
     // ================= 计时窗口开始 =================
     auto t0 = std::chrono::steady_clock::now();
 
-    CUDA_CHECK(cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_b, h_b, bytes, cudaMemcpyHostToDevice));
-
-    vectorAdd<<<blocks, threads>>>(d_a, d_b, d_c, n);
+    vectorAdd<<<blocks, threads>>>(a, b, c, n);
     CUDA_CHECK_KERNEL();
-
-    CUDA_CHECK(cudaMemcpy(h_c, d_c, bytes, cudaMemcpyDeviceToHost));
 
     // CPU 读完全部结果。unified memory 版里，这一步才会把结果页搬回 host。
     double got = 0;
-    for (int i = 0; i < n; i++) got += (double)h_c[i];
+    for (int i = 0; i < n; i++) got += (double)c[i];
 
     auto t1 = std::chrono::steady_clock::now();
     // ================= 计时窗口结束 =================
@@ -65,5 +60,8 @@ int main() {
            std::chrono::duration<double, std::milli>(t1 - t0).count());
 
     REPORT(fabs(got - want) <= 1e-3 * (1.0 + fabs(want)));
+    CUDA_CHECK(cudaFree(a));
+    CUDA_CHECK(cudaFree(b));
+    CUDA_CHECK(cudaFree(c));
     return 0;
 }
