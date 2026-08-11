@@ -440,7 +440,7 @@ TODO
 - 编译目标架构：TODO
 - 本机 GPU / CC：TODO
 - 是否成功运行：TODO
-- 报错信息：
+- 报错信息：CUDA error cudaErrorNoKernelImageForDevice at m0_env/01_hello.cu:11: no kernel image is available for execution on the device
 
 ```text
 TODO
