@@ -4,7 +4,7 @@
 # 依赖:pandoc(>=3)、xelatex、Noto CJK 字体。
 set -e
 cd "$(dirname "$0")"
-SRC=${1:-src/assignment02.md}
+SRC=${1:-src/assignment02-answer.md}
 BASE=$(basename "$SRC" .md)
 pandoc "$SRC" \
     --from markdown+fenced_divs+pipe_tables+raw_tex \
