@@ -66,15 +66,17 @@ make run/m0_env/01_first_mma
 
 | 量 | 5090 | B300 |
 |---|---|---|
-| bf16 FLOP/cycle/SM | | |
-| bf16 峰值(TFLOPS) | | |
-| fp8 峰值(TFLOPS) | | |
-| fp4 峰值(TFLOPS) | | |
+| bf16 FLOP/cycle/SM | 512 | 8192 |
+| bf16 峰值(TFLOPS) | 209.5 TFOPS | 2250 TFLOPS |
+| fp8 峰值(TFLOPS) | 419 TFLOPS | 4500 TFLOPS |
+| fp4 峰值(TFLOPS) | 1676 TFLOPS | 13500 TFLOPS |
 | datasheet 对照值与口径差异 | | |
-| HBM/GDDR 带宽(GB/s) | | |
-| 机器平衡点(FLOP/byte，bf16) | | |
+| HBM/GDDR 带宽(GB/s) | 1792 GB/s GDDR7 | 最高 8000 GB/s HBM3E |
+| 机器平衡点(FLOP/byte，bf16) | 116.9 FLOP/byte | 281.25 FLOP/byte |
 
 根据 bf16 峰值和显存带宽计算机器平衡点（FLOP/byte），并与单条 mma 的计算强度（S016，m16n8k16 fp16 为 3.2 FLOP/byte）比较。思考两者之间的差距意味着什么，以及为什么后续 M2--M4 需要从数据供给路径入手优化。
+
+> 单条 mma 的计算强度远低于机器平衡点，意味着为 memory bound，需要增加搬运数据效率、数据复用率。
 
 ### 0.3 {.prob type=CONCEPT}
 
@@ -83,14 +85,22 @@ make run/m0_env/01_first_mma
 (a) 一条 mma 的计算强度，分子是 $2MNK$，分母按 A、B 读入与 D 写回
 的字节总和计(S016 的口径)。
 
+> 正确。
+
 (b) mma.sync 是 warp 级协作指令:32 个 lane 各持 fragment 的一部分，
 要求全 warp 一致地执行这条指令；有 lane 发散时行为未定义。
+
+> 正确。
 
 (c) 增大 mma 的形状 M/N/K 能提高单条指令的计算强度，而且没有代价，
 所以指令形状越大越好。
 
+> 错误。M/N/K 越大，fragment 占用 register 的内存越多、SMEM 压力越大，并可能降低 occupancy。
+
 (d) 只要单条 mma 的计算强度低于机器平衡点，GEMM kernel 就不可能逼近
 计算峰值。
+
+> 错误。可以让多条无关 mma 并行计算。
 
 # sm80:fragment 与 mma.sync
 
@@ -120,6 +130,12 @@ make run/m1_sm80/01_fragment_map
 A 的同一个 b32 寄存器中的 4 个 fp8 元素沿矩阵哪个方向相邻？
 这个布局对 1.4 中使用 ldmatrix load 有什么影响？
 
+> 参考 https://docs.nvidia.com/cuda/parallel-thread-execution/#warp-level-matrix-fragment-mma-16832：
+>
+> A 的同一个 b32 寄存器中的 4 个 fp8 元素沿矩阵 k 方向相邻。
+>
+> SMEM 布局和 ldmatrix 路径必须使装载后的 32-bit register 包含 mma 所需的元素。
+
 ### 1.2 {.prob type=DEBUG file=cuda/m1_sm80/02_bug_fragment.cu}
 
 这个程序发一条 m16n8k16 fp16 mma，判测会 FAIL。先运行一遍，后改动:
@@ -132,6 +148,28 @@ A 的同一个 b32 寄存器中的 4 个 fp8 元素沿矩阵哪个方向相邻�
 cd assignment02/cuda
 make run/m1_sm80/02_bug_fragment
 ```
+
+> (a)：D 的后 8 行错误，错成了前 8 行的正确内容。
+>
+> (b)：A fragment 的 a2，a3，a6，a7 映射错误，应该映射到 8~15，即
+>
+> ```C
+> __half a2 = A[(group + 8) * 16 + tig * 2];
+> __half a3 = A[(group + 8) * 16 + tig * 2 + 1];
+> __half a6 = A[(group + 8) * 16 + tig * 2 + 8];
+> __half a7 = A[(group + 8) * 16 + tig * 2 + 9];
+> ```
+>
+> 但错误的映射成了
+>
+> ```C
+> __half a2 = A[group * 16 + tig * 2];
+> __half a3 = A[group * 16 + tig * 2 + 1];
+> __half a6 = A[group * 16 + tig * 2 + 8];
+> __half a7 = A[group * 16 + tig * 2 + 9];
+> ```
+>
+> 导致 A 的上下半完全相同。
 
 ::: {.capstone title="prob 1.3(FROM-SCRATCH):手写单 tile fp8 mma"}
 
@@ -169,6 +207,13 @@ cd assignment02/cuda/m1_sm80
 (a) `ldmatrix` 省掉了手工装载中的哪些工作？
 
 (b) 为什么这些工作在手工装载路径中无法避免？
+
+> (a)：省掉了
+>
+> - 每个 lane 根据 fragment 映射计算地址；
+> - 将 4 个 fp8 通过移位与 or 拼成一个 32 位来放入寄存器。
+>
+> (b)：因为 `ld.shared.u8` 只能实现当前 lane 从某一地址读取一个字节，无法实现对应的 fragment 位置、4 个 fp8 应该如何排列到 32 位寄存器中。
 
 ### 1.5 {.prob type=EXPERIMENT file=cuda/m1_sm80/05_ldsm_stride.cu}
 
@@ -874,3 +919,4 @@ README 中固定的版本重新核实。 -->
 - **代码**：提交所有动手题的实现与判测输出；FROM-SCRATCH 题同时保留判测脚本的 PASS 记录。
 - **报告**：包含纸面题解答、实验表格与性能归因，以及 DEBUG 题的现象记录和修改说明。所有实验数据注明使用的 GPU。
 - **团队题**：提交代码、报告并完成答辩，具体要求见 `team/README.md`。
+

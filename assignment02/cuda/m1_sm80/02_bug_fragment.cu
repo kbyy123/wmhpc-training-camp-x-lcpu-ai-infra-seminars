@@ -17,12 +17,12 @@ __global__ void mma_buggy(const __half* A, const __half* B, float* D) {
     // A fragment:8 个 fp16 逐个装载。
     __half a0 = A[group * 16 + tig * 2];
     __half a1 = A[group * 16 + tig * 2 + 1];
-    __half a2 = A[group * 16 + tig * 2];
-    __half a3 = A[group * 16 + tig * 2 + 1];
+    __half a2 = A[(group + 8) * 16 + tig * 2];
+    __half a3 = A[(group + 8) * 16 + tig * 2 + 1];
     __half a4 = A[group * 16 + tig * 2 + 8];
     __half a5 = A[group * 16 + tig * 2 + 9];
-    __half a6 = A[group * 16 + tig * 2 + 8];
-    __half a7 = A[group * 16 + tig * 2 + 9];
+    __half a6 = A[(group + 8) * 16 + tig * 2 + 8];
+    __half a7 = A[(group + 8) * 16 + tig * 2 + 9];
     unsigned ra[4];
     reinterpret_cast<__half2*>(ra)[0] = __halves2half2(a0, a1);
     reinterpret_cast<__half2*>(ra)[1] = __halves2half2(a2, a3);
@@ -45,6 +45,9 @@ __global__ void mma_buggy(const __half* A, const __half* B, float* D) {
         : "r"(ra[0]), "r"(ra[1]), "r"(ra[2]), "r"(ra[3]), "r"(rb[0]),
           "r"(rb[1]), "f"(c[0]), "f"(c[1]), "f"(c[2]), "f"(c[3]));
 
+
+    // int group = lane >> 2; 
+    // int tig = lane & 3;
     D[group * 8 + tig * 2] = d[0];
     D[group * 8 + tig * 2 + 1] = d[1];
     D[(group + 8) * 8 + tig * 2] = d[2];

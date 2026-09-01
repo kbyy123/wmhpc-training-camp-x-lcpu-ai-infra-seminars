@@ -1,0 +1,89 @@
+srun: job 14452 queued and waiting for resources
+srun: job 14452 has been allocated resources
+==PROF== Connected to process 3570601 (/home/lcpu/60403270/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda/bin/m1_sm80/05_ldsm_stride)
+==PROF== Profiling "ldsm_kernel" - 0: 0%....50%....100% - 1 pass
+==PROF== Profiling "ldsm_kernel" - 1: 0%....50%....100% - 1 pass
+==PROF== Profiling "ldsm_kernel" - 2: 0%....50%....100% - 1 pass
+==PROF== Profiling "ldsm_kernel" - 3: 0%....50%....100% - 1 pass
+==PROF== Profiling "ldsm_kernel" - 4: 0%....50%....100% - 1 pass
+==PROF== Profiling "ldsm_kernel" - 5: 0%....50%....100% - 1 pass
+==PROF== Profiling "ldsm_kernel" - 6: 0%....50%....100% - 1 pass
+==PROF== Profiling "ldsm_kernel" - 7: 0%....50%....100% - 1 pass
+stride 32B        9.72 cycles / ldmatrix(8 warp 均摊)
+stride 64B       10.76 cycles / ldmatrix(8 warp 均摊)
+stride 128B      16.06 cycles / ldmatrix(8 warp 均摊)
+stride 128B+pad   9.24 cycles / ldmatrix(8 warp 均摊)
+==PROF== Disconnected from process 3570601
+[3570601] 05_ldsm_stride@127.0.0.1
+  void ldsm_kernel<32>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                     8192
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                        16384
+    -------------------------------------------------------- ----------- ------------
+
+  void ldsm_kernel<32>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                     8192
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                        16384
+    -------------------------------------------------------- ----------- ------------
+
+  void ldsm_kernel<64>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                    24576
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                        32768
+    -------------------------------------------------------- ----------- ------------
+
+  void ldsm_kernel<64>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                    24576
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                        32768
+    -------------------------------------------------------- ----------- ------------
+
+  void ldsm_kernel<128>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                    57344
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                        65536
+    -------------------------------------------------------- ----------- ------------
+
+  void ldsm_kernel<128>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                    57344
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                        65536
+    -------------------------------------------------------- ----------- ------------
+
+  void ldsm_kernel<144>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                        0
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                         8192
+    -------------------------------------------------------- ----------- ------------
+
+  void ldsm_kernel<144>(unsigned int *, long long *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Command line profiler metrics
+    -------------------------------------------------------- ----------- ------------
+    Metric Name                                              Metric Unit Metric Value
+    -------------------------------------------------------- ----------- ------------
+    l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum                        0
+    l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum                         8192
+    -------------------------------------------------------- ----------- ------------
+

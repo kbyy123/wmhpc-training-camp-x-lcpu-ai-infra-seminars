@@ -20,9 +20,44 @@
 #include <cstring>
 
 // TODO: 实现三个映射。
-static int swizzle_128B(int row, int colByte) { (void)row; return colByte; }
-static int swizzle_64B(int row, int colByte) { (void)row; return colByte; }
-static int swizzle_32B(int row, int colByte) { (void)row; return colByte; }
+
+/*
+9 -- 7 | 6 ------ 4 | 3 - 2 | 1 - 0
+  row  | bank group | bank  | byte
+
+  swizzle 是在 16B bank group 范围上进行交换，最低四位不变
+  
+  取 row 的低 3 位，因此 8 行一周期
+*/
+static int swizzle_128B(int row, int colByte) {
+    int bank_group = (colByte >> 4) & 0x7;
+    int row_bits = row & 0x7;
+    return (row << 7) | ((bank_group ^ row_bits) << 4) | (colByte & 0xf);
+}
+
+/*
+8 -- 6 | 5 ------ 4 | 3 - 2 | 1 - 0
+  row  | bank group | bank  | byte
+  
+  取 row 的低 2 位，因此 4 行一周期
+*/
+static int swizzle_64B(int row, int colByte) {
+    int bank_group = (colByte >> 4) & 0x3;
+    int row_bits = row & 0x3;
+    return (row << 6) | ((bank_group ^ row_bits) << 4) | (colByte & 0xf);
+}
+
+/*
+7 -- 5 |     4      | 3 - 2 | 1 - 0
+  row  | bank group | bank  | byte
+
+  取 row 的低 1 位，因此 2 行一周期
+*/
+static int swizzle_32B(int row, int colByte) {
+    int bank_group = (colByte >> 4) & 0x1;
+    int row_bits = row & 0x1;
+    return (row << 5) | ((bank_group ^ row_bits) << 4) | (colByte & 0xf);
+}
 
 // 以下为判测,不需要修改。
 static int check_mode(const char* name, int (*fn)(int, int), int rowBytes,

@@ -24,16 +24,80 @@
 // 想清楚哪种布局能满足它。
 //
 // TODO: 实现两个装载函数。
+__device__ int a_row_of(int lane, int i) {
+    int r = i / 4;
+    int gid = lane / 4;
+    return gid + 8 * (r & 1);
+}
+
+__device__ int a_col_of(int lane, int i) {
+    int r = i / 4;
+    int j = i % 4;
+    int tid = lane % 4;
+    return 4 * tid + 16 * (r >> 1) + j;
+}
+
+__device__ int bk_row_of(int lane, int i) {
+    int r = i / 4;
+    int j = i % 4;
+    return 4 * (lane % 4) + 16 * r + j;
+}
+
+__device__ int bk_col_of(int lane, int i) {
+    return lane / 4;
+}
+
+__device__ unsigned pack4_A(const uint8_t* base, int row, int col) {
+    const uint8_t* raw = reinterpret_cast<const uint8_t*>(base + row * 32 + col);
+    return unsigned(raw[0]) | (unsigned(raw[1]) << 8) | (unsigned(raw[2]) << 16) | (unsigned(raw[3]) << 24);
+}
+
+__device__ unsigned pack4_B(const uint8_t* base, int row, int col) {
+    const uint8_t* raw = reinterpret_cast<const uint8_t*>(base + row * 8 + col);
+    return unsigned(raw[0]) | (unsigned(raw[8]) << 8) | (unsigned(raw[16]) << 16) | (unsigned(raw[24]) << 24);
+}
+
 __device__ void load_manual(const uint8_t* sA, const uint8_t* sBk,
                             const uint8_t* sBn, unsigned (&a)[4],
                             unsigned (&b)[2]) {
-    (void)sA; (void)sBk; (void)sBn; (void)a; (void)b;
+    int lane = threadIdx.x;
+    for (int i = 0; i < 4; i++) {
+        a[i] = pack4_A(sA, a_row_of(lane, 4 * i), a_col_of(lane, 4 * i));
+    }
+    for (int i = 0; i < 2; i++) {
+        b[i] = pack4_B(sBk, bk_row_of(lane, 4 * i), bk_col_of(lane, 4 * i));
+    }
+}
+
+__device__ __forceinline__ uint32_t smem_u32(const void* p) {
+    return static_cast<uint32_t>(
+        __cvta_generic_to_shared(p)
+    );
 }
 
 __device__ void load_ldsm(const uint8_t* sA, const uint8_t* sBk,
                           const uint8_t* sBn, unsigned (&a)[4],
                           unsigned (&b)[2]) {
-    (void)sA; (void)sBk; (void)sBn; (void)a; (void)b;
+    int lane = threadIdx.x & 31;
+    int row_A = lane & 15;
+    int col_A = (lane >> 4) * 16;
+    int row_B = lane & 7;
+    int col_B = (lane >> 3) * 16;
+
+    uint32_t addr_A = smem_u32(&sA[row_A * 32 + col_A]);
+    uint32_t addr_B = smem_u32(&sBn[row_B * 32 + col_B]);
+
+    asm volatile(
+        "ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
+        : "=r"(a[0]), "=r"(a[1]), "=r"(a[2]), "=r"(a[3])
+        : "r"(addr_A) 
+    );
+
+    asm volatile(
+        "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%0, %1}, [%2];"
+        : "=r"(b[0]), "=r"(b[1])
+        : "r"(addr_B) 
+    );
 }
 
 template <bool USE_LDSM>
