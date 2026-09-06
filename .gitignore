@@ -59,3 +59,8 @@ test/
 
 assignment01/reference_answers.md
 B300_USAGE.md
+
+*.txt
+*.ncu-rep
+
+assignment02/cuda/m4_gemm/ncu_analysis

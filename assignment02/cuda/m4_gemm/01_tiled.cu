@@ -56,6 +56,16 @@ __device__ inline void mbar_wait(uint32_t mbar, uint32_t phase) {
             : "r"(mbar), "r"(phase));
 }
 
+__device__ __forceinline__ void issue_mma(uint32_t taddr, uint64_t a_desc, uint64_t b_desc, uint32_t idesc, bool accumlate) {
+    uint32_t acc = accumlate ? 1 : 0;
+    asm volatile(
+        "{\n"
+        ".reg .pred p;\n"
+        "setp.ne.b32 p, %4, 0;\n"
+        "tcgen05.mma.cta_group::1.kind::f16 [%0], %1, %2, %3, p;\n}\n"
+        :: "r"(taddr), "l"(a_desc), "l"(b_desc), "r"(idesc), "r"(acc));
+}
+
 __global__ void gemm_tiled(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
                            float* gD, int M, int N, int K) {
     // smem 用动态分配(main 已按 (BM+BN)*BK*2 + 1024 传入),基址对齐
@@ -66,22 +76,112 @@ __global__ void gemm_tiled(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
 
     // TODO:在你 3.2 的实现基础上扩展。结构:
     // (1) mbarrier 初始化 + TMEM 分配(与 3.2 相同,整段沿用)
-    // (2) 本 block 的输出 tile:tileM = blockIdx.x*BM, tileN = blockIdx.y*BN
+    int tid = threadIdx.x;
+    int warp_id = tid / 32;
+    int lane = tid % 32;
+
+    __shared__ uint32_t s_taddr;
+    __shared__ alignas(8) uint64_t bar;
+    uint32_t addr_bar = (uint32_t)__cvta_generic_to_shared(&bar);
+
+    if (warp_id == 0) { 
+        if (lane == 0) {
+            asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;"
+                        :: "r"(addr_bar), "r"(1));
+            asm volatile("fence.mbarrier_init.release.cluster;");
+        }
+        uint32_t dst = (uint32_t)__cvta_generic_to_shared(&s_taddr);
+        asm volatile("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], %1;"
+                    :: "r"(dst), "r"(BN));
+        asm volatile("tcgen05.relinquish_alloc_permit.cta_group::1.sync.aligned;");
+    }
+
+    __syncthreads();
+
+    // (2) 本 block 的输出 tile:tileM = blockIdx.x * BM, tileN = blockIdx.y * BN
+    
+    int base_M = blockIdx.x * BM, base_N = blockIdx.y * BN;
+    
     // (3) K 维循环 it = 0 .. K/BK-1,每轮:
+
+    int cur_parity = 0;
+    uint32_t tmem_base = s_taddr;
+    bool acc = false;
+    for (int it = 0; it < K / BK; it++) {
+    
     //     (a) 全体线程把 A 的 (tileM, it*BK) 块、B 的 (tileN, it*BK) 块
     //         按 swz128 布局 st.shared 进 smem(即 3.2 的 staging,行列
     //         起点换成 tile 偏移)
+        for (int i = tid; i < BM * BK; i += blockDim.x) {
+            int r = i / BK, c = i % BK;
+            // 对应 gA[base_M + r, it * BK + c]
+            *reinterpret_cast<__nv_bfloat16*>(&smem[swz128(r, c * 2)]) = gA[(base_M + r) * N + it * BK + c];
+        }
+        for (int i = tid; i < BN * BK; i += blockDim.x) {
+            int r = i / BK, c = i % BK;
+            *reinterpret_cast<__nv_bfloat16*>(&smem[swz128(r, c * 2) + 2 * BM * BK]) = gB[(base_N + r) * 4096 + it * BK + c];
+        }
+    
     //     (b) fence.proxy.async + __syncthreads
+        asm volatile("fence.proxy.async.shared::cta;");
+        __syncthreads();
+        
     //     (c) 单线程发射 4 条 k16 的 tcgen05.mma。注意累加位:整个 K
     //         循环里只有第一条 mma 不累加(enable-input-d = 0),其余
     //         全部累加到同一块 TMEM——3.2 里"kk>0 才累加"的条件在这里
     //         要连 it 一起考虑
+        uint32_t sA_base = __cvta_generic_to_shared(smem);
+        uint32_t sB_base = __cvta_generic_to_shared(smem + 2 * BM * BK);
+        constexpr uint32_t idesc = (1u << 4) | (1u << 7) | (1u << 10) | ((BN >> 3) << 17) | ((BM >> 4) << 24);
+
+        if (tid == 0) {
+            asm volatile("tcgen05.fence::after_thread_sync;");
+            for (int k = 0; k < 4; k++) {
+                uint64_t a_desc = make_desc_sm100(sA_base + 32 * k, 0u, 1024u, 2u);
+                uint64_t b_desc = make_desc_sm100(sB_base + 32 * k, 0u, 1024u, 2u);
+                issue_mma(tmem_base, a_desc, b_desc, idesc, acc);
+                acc = true;
+            }
+            asm volatile("tcgen05.commit.cta_group::1.mbarrier::arrive::one"
+                        ".shared::cluster.b64 [%0];" :: "r"(addr_bar));
+        }
+
     //     (d) commit 到 mbarrier,等 mma 消费完成后才能进入下一轮覆写
     //         smem。想清楚 parity 怎么随 it 翻转;这一步等错或漏等,
     //         小 K 可能侥幸通过,大 K 会读到被覆写的数据
+        mbar_wait(addr_bar, cur_parity);
+        cur_parity ^= 1;
+    }
+
     // (4) epilogue 与 3.2 相同,写回 gD 的 (tileM, tileN) 块(行跨度 N)
+    asm volatile("tcgen05.fence::after_thread_sync;");
+    // 总共要搬运 128 * 64 fp32，每个 warp 搬运 32 * 64，单个 thread 搬运 N 个，搬到寄存器
+    float t[BN];
+
+    #pragma unroll
+    for (int c = 0; c < BN; c += 8) {
+        uint32_t taddr = tmem_base + ((warp_id * 32) << 16) + c;
+        asm volatile("tcgen05.ld.sync.aligned.32x32b.x8.b32 "
+                     "{%0,%1,%2,%3,%4,%5,%6,%7}, [%8];"
+                    : "=f"(t[c]), "=f"(t[c + 1]), "=f"(t[c + 2]), "=f"(t[c + 3]), 
+                      "=f"(t[c + 4]), "=f"(t[c + 5]), "=f"(t[c + 6]), "=f"(t[c + 7])
+                    : "r"(taddr));
+        asm volatile("tcgen05.wait::ld.sync.aligned;");
+    }
+
+    // 每一个 thread 把自己的 N 个 fp32 写回 GMEM
+    #pragma unroll
+    for (int i = 0; i < BN; i++) {
+        int r = warp_id * 32 + lane; 
+        gD[(base_M + r) * N + base_N + i] = t[i];
+    }
+
     // (5) dealloc
-    (void)gA; (void)gB; (void)gD; (void)M; (void)N; (void)K; (void)smem;
+    __syncthreads();
+    if (warp_id == 0) {
+        asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, %1;"
+                     :: "r"(tmem_base), "r"(BN));
+    }
 }
 
 int main(int argc, char** argv) {

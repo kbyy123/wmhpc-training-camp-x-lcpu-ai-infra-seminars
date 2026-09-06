@@ -54,6 +54,16 @@ __device__ inline void mbar_wait(uint32_t mbar, uint32_t phase) {
             : "r"(mbar), "r"(phase));
 }
 
+__device__ __forceinline__ void issue_mma(uint32_t taddr, uint64_t a_desc, uint64_t b_desc, uint32_t idesc, bool accumlate) {
+    uint32_t acc = accumlate ? 1 : 0;
+    asm volatile(
+        "{\n"
+        ".reg .pred p;\n"
+        "setp.ne.b32 p, %4, 0;\n"
+        "tcgen05.mma.cta_group::1.kind::f16 [%0], %1, %2, %3, p;\n}\n"
+        :: "r"(taddr), "l"(a_desc), "l"(b_desc), "r"(idesc), "r"(acc));
+}
+
 __global__ void gemm_tma(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
                          float* gD, int M, int N, int K,
                          const __grid_constant__ CUtensorMap tmapA,
@@ -74,8 +84,134 @@ __global__ void gemm_tma(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
     //     A 是 {it*BK, tileM},B 是 {it*BK, tileN}
     // (3) 删掉 st.shared staging、swz128、fence.proxy.async(见文件头)
     // full/empty 的 parity 都随轮次翻转,想清楚各自翻转的节奏。
-    (void)gA; (void)gB; (void)gD; (void)M; (void)N; (void)K;
-    (void)tmapA; (void)tmapB; (void)smem;
+    
+    // 一个 block 完成一次 m128n64k64 tile 的乘加，由四条 m128n64k16 的 mma 组成
+
+    // (1) mbarrier 初始化 + TMEM 分配(与 3.2 相同,整段沿用)
+    int tid = threadIdx.x;
+    int warp_id = tid / 32;
+    int lane = tid % 32;
+    constexpr int TX_BYTES = (BM + BN) * BK * 2;
+
+    __shared__ uint32_t s_taddr;
+    __shared__ alignas(8) uint64_t full_bar;
+    __shared__ alignas(8) uint64_t empty_bar;
+    uint32_t full_addr = (uint32_t)__cvta_generic_to_shared(&full_bar);
+    uint32_t empty_addr = (uint32_t)__cvta_generic_to_shared(&empty_bar);
+
+    if (warp_id == 0) { 
+        if (lane == 0) {
+            asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;"
+                        :: "r"(full_addr), "r"(1));
+            asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;"
+                        :: "r"(empty_addr), "r"(1));
+            asm volatile("fence.mbarrier_init.release.cluster;");
+        }
+        uint32_t dst = (uint32_t)__cvta_generic_to_shared(&s_taddr);
+        asm volatile("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], %1;"
+                    :: "r"(dst), "r"(BN));
+        asm volatile("tcgen05.relinquish_alloc_permit.cta_group::1.sync.aligned;");
+    }
+
+    __syncthreads();
+
+    // (2) 本 block 的输出 tile:tileM = blockIdx.x * BM, tileN = blockIdx.y * BN
+    
+    int tileM = blockIdx.x * BM, tileN = blockIdx.y * BN;
+    
+    // (3) K 维循环 it = 0 .. K/BK-1,每轮:
+
+    int full_parity = 0;
+    int empty_parity = 0;
+    uint32_t tmem_base = s_taddr;
+    uint32_t sA_base = __cvta_generic_to_shared(smem);
+    uint32_t sB_base = __cvta_generic_to_shared(smem + 2 * BM * BK);
+
+    bool acc = false;
+    for (int it = 0; it < K / BK; it++) {
+        
+    //     prologue：除了第一次以外，先等待 empty 
+        if (it != 0) {
+            mbar_wait(empty_addr, empty_parity);
+            empty_parity ^= 1;
+        }
+    
+    //     (a) 一个线程登记总字节数，发起两次 TMA 
+        if (tid == 0) {
+            asm volatile(
+                "mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;"
+                :: "r"(full_addr), "r"(TX_BYTES));
+            asm volatile(
+                "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes "
+                "[%0], [%1, {%2, %3}], [%4];"
+                :: "r"(sA_base), "l"(&tmapA), "r"(it * BK), "r"(tileM), "r"(full_addr)
+            );
+            asm volatile(
+                "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes "
+                "[%0], [%1, {%2, %3}], [%4];"
+                :: "r"(sB_base), "l"(&tmapB), "r"(it * BK), "r"(tileN), "r"(full_addr)
+            );
+        }
+
+    //     (b) TMA 搬运和 mma 都属于 async proxy，可以不用 fence.proxy.async
+        __syncthreads();
+        mbar_wait(full_addr, full_parity);
+        full_parity ^= 1;
+        
+    //     (c) 单线程发射 4 条 k16 的 tcgen05.mma。注意累加位:整个 K
+    //         循环里只有第一条 mma 不累加(enable-input-d = 0),其余
+    //         全部累加到同一块 TMEM——3.2 里"kk>0 才累加"的条件在这里
+    //         要连 it 一起考虑
+        
+        constexpr uint32_t idesc = (1u << 4) | (1u << 7) | (1u << 10) | ((BN >> 3) << 17) | ((BM >> 4) << 24);
+
+        if (tid == 0) {
+            asm volatile("tcgen05.fence::after_thread_sync;");
+            for (int k = 0; k < 4; k++) {
+                uint64_t a_desc = make_desc_sm100(sA_base + 32 * k, 0u, 1024u, 2u);
+                uint64_t b_desc = make_desc_sm100(sB_base + 32 * k, 0u, 1024u, 2u);
+                issue_mma(tmem_base, a_desc, b_desc, idesc, acc);
+                acc = true;
+            }
+            asm volatile("tcgen05.commit.cta_group::1.mbarrier::arrive::one"
+                        ".shared::cluster.b64 [%0];" :: "r"(empty_addr));
+        }
+
+    }
+
+    // epilogue 在最后，等待一次 empty
+    mbar_wait(empty_addr, empty_parity);
+    empty_parity ^= 1;
+
+    // (4) epilogue 与 3.2 相同,写回 gD 的 (tileM, tileN) 块(行跨度 N)
+    asm volatile("tcgen05.fence::after_thread_sync;");
+    // 总共要搬运 128 * 64 fp32，每个 warp 搬运 32 * 64，单个 thread 搬运 N 个，搬到寄存器
+    float t[BN];
+
+    #pragma unroll
+    for (int c = 0; c < BN; c += 8) {
+        uint32_t taddr = tmem_base + ((warp_id * 32) << 16) + c;
+        asm volatile("tcgen05.ld.sync.aligned.32x32b.x8.b32 "
+                     "{%0,%1,%2,%3,%4,%5,%6,%7}, [%8];"
+                    : "=f"(t[c]), "=f"(t[c + 1]), "=f"(t[c + 2]), "=f"(t[c + 3]), 
+                      "=f"(t[c + 4]), "=f"(t[c + 5]), "=f"(t[c + 6]), "=f"(t[c + 7])
+                    : "r"(taddr));
+        asm volatile("tcgen05.wait::ld.sync.aligned;");
+    }
+
+    // 每一个 thread 把自己的 N 个 fp32 写回 GMEM
+    #pragma unroll
+    for (int i = 0; i < BN; i++) {
+        int r = warp_id * 32 + lane; 
+        gD[(tileM + r) * N + tileN + i] = t[i];
+    }
+
+    // (5) dealloc
+    __syncthreads();
+    if (warp_id == 0) {
+        asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, %1;"
+                     :: "r"(tmem_base), "r"(BN));
+    }
 }
 
 int main(int argc, char** argv) {
@@ -105,8 +241,50 @@ int main(int argc, char** argv) {
     // TODO:cuTensorMapEncodeTiled 建 tmapA/tmapB(参数要点见文件头;
     // 返回值要检查,CUDA_SUCCESS 之外一律报错退出——tensor map 参数错
     // 的典型症状是 kernel 静默读到 0 或越界,而不是启动失败)。
-    CUtensorMap tmapA = {}, tmapB = {};
 
+    // 需要传入的是数组的地址
+    uint64_t dimsA[2] = {static_cast<uint64_t>(K), static_cast<uint64_t>(M)};
+    uint64_t dimsB[2] = {static_cast<uint64_t>(K), static_cast<uint64_t>(N)};
+    uint64_t strides[1] = {static_cast<uint64_t>(K) * 2};
+    uint32_t boxA[2] = {BK, BM}, boxB[2] = {BK, BN};
+    uint32_t elementStrides[2] = {1, 1};
+
+    CUtensorMap tmapA = {}, tmapB = {};
+    // 文档见 https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html#group__CUDA__TENSOR__MEMORY_1ga7c7d2aaac9e49294304e755e6f341d7
+    CUresult resultA = cuTensorMapEncodeTiled(&tmapA, 
+        CU_TENSOR_MAP_DATA_TYPE_BFLOAT16, 
+        2, 
+        dA,
+        dimsA, 
+        strides, 
+        boxA, 
+        elementStrides,
+        CU_TENSOR_MAP_INTERLEAVE_NONE,
+        CU_TENSOR_MAP_SWIZZLE_128B,
+        CU_TENSOR_MAP_L2_PROMOTION_NONE,
+        CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE
+    );
+
+    CUresult resultB = cuTensorMapEncodeTiled(&tmapB, 
+        CU_TENSOR_MAP_DATA_TYPE_BFLOAT16, 
+        2, 
+        dB,
+        dimsB, 
+        strides, 
+        boxB, 
+        elementStrides,
+        CU_TENSOR_MAP_INTERLEAVE_NONE,
+        CU_TENSOR_MAP_SWIZZLE_128B,
+        CU_TENSOR_MAP_L2_PROMOTION_NONE,
+        CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE
+    );
+
+    if (resultA != CUDA_SUCCESS || resultB != CUDA_SUCCESS) {
+        fprintf(stderr, "Tensor map encode failed: A=%d, B=%d\n",
+                static_cast<int>(resultA),
+                static_cast<int>(resultB));
+        return 1;
+    }
     dim3 grid(M / BM, N / BN);
     size_t smemBytes = (size_t)(BM + BN) * BK * 2 + 1024;
     CUDA_CHECK(cudaFuncSetAttribute(gemm_tma,
