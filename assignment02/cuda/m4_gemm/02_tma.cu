@@ -94,17 +94,17 @@ __global__ void gemm_tma(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
     constexpr int TX_BYTES = (BM + BN) * BK * 2;
 
     __shared__ uint32_t s_taddr;
-    __shared__ alignas(8) uint64_t full_bar;
-    __shared__ alignas(8) uint64_t empty_bar;
-    uint32_t full_addr = (uint32_t)__cvta_generic_to_shared(&full_bar);
-    uint32_t empty_addr = (uint32_t)__cvta_generic_to_shared(&empty_bar);
+    __shared__ alignas(8) uint64_t full_bar[1];
+    __shared__ alignas(8) uint64_t empty_bar[1];
+    uint32_t full_bar_addr = (uint32_t)__cvta_generic_to_shared(full_bar);
+    uint32_t empty_bar_addr = (uint32_t)__cvta_generic_to_shared(empty_bar);
 
     if (warp_id == 0) { 
         if (lane == 0) {
             asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;"
-                        :: "r"(full_addr), "r"(1));
+                        :: "r"(full_bar_addr), "r"(1));
             asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;"
-                        :: "r"(empty_addr), "r"(1));
+                        :: "r"(empty_bar_addr), "r"(1));
             asm volatile("fence.mbarrier_init.release.cluster;");
         }
         uint32_t dst = (uint32_t)__cvta_generic_to_shared(&s_taddr);
@@ -132,7 +132,7 @@ __global__ void gemm_tma(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
         
     //     prologue：除了第一次以外，先等待 empty 
         if (it != 0) {
-            mbar_wait(empty_addr, empty_parity);
+            mbar_wait(empty_bar_addr, empty_parity);
             empty_parity ^= 1;
         }
     
@@ -140,22 +140,22 @@ __global__ void gemm_tma(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
         if (tid == 0) {
             asm volatile(
                 "mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;"
-                :: "r"(full_addr), "r"(TX_BYTES));
+                :: "r"(full_bar_addr), "r"(TX_BYTES));
             asm volatile(
                 "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes "
                 "[%0], [%1, {%2, %3}], [%4];"
-                :: "r"(sA_base), "l"(&tmapA), "r"(it * BK), "r"(tileM), "r"(full_addr)
+                :: "r"(sA_base), "l"(&tmapA), "r"(it * BK), "r"(tileM), "r"(full_bar_addr)
             );
             asm volatile(
                 "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes "
                 "[%0], [%1, {%2, %3}], [%4];"
-                :: "r"(sB_base), "l"(&tmapB), "r"(it * BK), "r"(tileN), "r"(full_addr)
+                :: "r"(sB_base), "l"(&tmapB), "r"(it * BK), "r"(tileN), "r"(full_bar_addr)
             );
         }
 
     //     (b) TMA 搬运和 mma 都属于 async proxy，可以不用 fence.proxy.async
         __syncthreads();
-        mbar_wait(full_addr, full_parity);
+        mbar_wait(full_bar_addr, full_parity);
         full_parity ^= 1;
         
     //     (c) 单线程发射 4 条 k16 的 tcgen05.mma。注意累加位:整个 K
@@ -174,13 +174,13 @@ __global__ void gemm_tma(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
                 acc = true;
             }
             asm volatile("tcgen05.commit.cta_group::1.mbarrier::arrive::one"
-                        ".shared::cluster.b64 [%0];" :: "r"(empty_addr));
+                        ".shared::cluster.b64 [%0];" :: "r"(empty_bar_addr));
         }
 
     }
 
     // epilogue 在最后，等待一次 empty
-    mbar_wait(empty_addr, empty_parity);
+    mbar_wait(empty_bar_addr, empty_parity);
     empty_parity ^= 1;
 
     // (4) epilogue 与 3.2 相同,写回 gD 的 (tileM, tileN) 块(行跨度 N)

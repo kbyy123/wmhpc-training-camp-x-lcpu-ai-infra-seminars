@@ -81,13 +81,13 @@ __global__ void gemm_tiled(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
     int lane = tid % 32;
 
     __shared__ uint32_t s_taddr;
-    __shared__ alignas(8) uint64_t bar;
-    uint32_t addr_bar = (uint32_t)__cvta_generic_to_shared(&bar);
+    __shared__ alignas(8) uint64_t bar[1];
+    uint32_t bar_addr = (uint32_t)__cvta_generic_to_shared(bar);
 
     if (warp_id == 0) { 
         if (lane == 0) {
             asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;"
-                        :: "r"(addr_bar), "r"(1));
+                        :: "r"(bar_addr), "r"(1));
             asm volatile("fence.mbarrier_init.release.cluster;");
         }
         uint32_t dst = (uint32_t)__cvta_generic_to_shared(&s_taddr);
@@ -104,7 +104,7 @@ __global__ void gemm_tiled(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
     
     // (3) K 维循环 it = 0 .. K/BK-1,每轮:
 
-    int cur_parity = 0;
+    int parity = 0;
     uint32_t tmem_base = s_taddr;
     bool acc = false;
     for (int it = 0; it < K / BK; it++) {
@@ -143,14 +143,14 @@ __global__ void gemm_tiled(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
                 acc = true;
             }
             asm volatile("tcgen05.commit.cta_group::1.mbarrier::arrive::one"
-                        ".shared::cluster.b64 [%0];" :: "r"(addr_bar));
+                        ".shared::cluster.b64 [%0];" :: "r"(bar_addr));
         }
 
     //     (d) commit 到 mbarrier,等 mma 消费完成后才能进入下一轮覆写
     //         smem。想清楚 parity 怎么随 it 翻转;这一步等错或漏等,
     //         小 K 可能侥幸通过,大 K 会读到被覆写的数据
-        mbar_wait(addr_bar, cur_parity);
-        cur_parity ^= 1;
+        mbar_wait(bar_addr, parity);
+        parity ^= 1;
     }
 
     // (4) epilogue 与 3.2 相同,写回 gD 的 (tileM, tileN) 块(行跨度 N)
