@@ -1,0 +1,411 @@
+# M      K        2step_us   fused_us  speedup
+tune fused M=1 block=128 grid=1 us=6.310
+tune fused M=1 block=128 grid=1 us=6.306
+tune fused M=1 block=128 grid=1 us=6.309
+tune fused M=1 block=128 grid=1 us=6.306
+tune fused M=1 block=128 grid=1 us=6.309
+tune fused M=1 block=256 grid=1 us=4.258
+tune fused M=1 block=256 grid=1 us=4.253
+tune fused M=1 block=256 grid=1 us=4.259
+tune fused M=1 block=256 grid=1 us=4.267
+tune fused M=1 block=256 grid=1 us=4.360
+tune fused M=1 block=512 grid=1 us=4.259
+tune fused M=1 block=512 grid=1 us=4.261
+tune fused M=1 block=512 grid=1 us=4.259
+tune fused M=1 block=512 grid=1 us=4.262
+tune fused M=1 block=512 grid=1 us=4.259
+tune rms M=1 block=128 grid=1 us=5.280
+tune rms M=1 block=128 grid=1 us=5.278
+tune rms M=1 block=128 grid=1 us=5.277
+tune rms M=1 block=128 grid=1 us=5.184
+tune rms M=1 block=128 grid=1 us=5.282
+tune rms M=1 block=256 grid=1 us=4.462
+tune rms M=1 block=256 grid=1 us=4.467
+tune rms M=1 block=256 grid=1 us=4.462
+tune rms M=1 block=256 grid=1 us=4.363
+tune rms M=1 block=256 grid=1 us=4.360
+tune rms M=1 block=512 grid=1 us=4.253
+tune rms M=1 block=512 grid=1 us=4.254
+tune rms M=1 block=512 grid=1 us=4.259
+tune rms M=1 block=512 grid=1 us=4.258
+tune rms M=1 block=512 grid=1 us=4.267
+tune quant M=1 K=4096 block=128 grid=2 us=4.253
+tune quant M=1 K=4096 block=128 grid=2 us=4.261
+tune quant M=1 K=4096 block=128 grid=2 us=4.250
+tune quant M=1 K=4096 block=128 grid=2 us=4.254
+tune quant M=1 K=4096 block=256 grid=1 us=4.258
+tune quant M=1 K=4096 block=256 grid=1 us=4.258
+tune quant M=1 K=4096 block=256 grid=1 us=4.258
+tune quant M=1 K=4096 block=256 grid=1 us=4.262
+selected M=1 K=4096 fused=256/1 rms=512/1 quant=128/2
+details M=1 K=4096 fused_sf_bad=0 baseline_data_bad=0 baseline_sf_bad=0 probe_us=4.112 fused_GBs=2.6 probe_GBs=2.6 fused/probe=0.9999
+  1      4096         8.21       4.11    2.00x PASS(bad=0)
+tune fused M=16 block=128 grid=16 us=6.307
+tune fused M=16 block=128 grid=16 us=6.309
+tune fused M=16 block=128 grid=16 us=6.317
+tune fused M=16 block=128 grid=16 us=6.302
+tune fused M=16 block=128 grid=16 us=6.306
+tune fused M=16 block=256 grid=16 us=5.890
+tune fused M=16 block=256 grid=16 us=5.987
+tune fused M=16 block=256 grid=16 us=5.888
+tune fused M=16 block=256 grid=16 us=5.688
+tune fused M=16 block=256 grid=16 us=5.792
+tune fused M=16 block=512 grid=16 us=5.480
+tune fused M=16 block=512 grid=16 us=5.586
+tune fused M=16 block=512 grid=16 us=5.478
+tune fused M=16 block=512 grid=16 us=5.381
+tune fused M=16 block=512 grid=16 us=5.478
+tune rms M=16 block=128 grid=16 us=6.304
+tune rms M=16 block=128 grid=16 us=6.304
+tune rms M=16 block=128 grid=16 us=6.314
+tune rms M=16 block=128 grid=16 us=6.309
+tune rms M=16 block=128 grid=16 us=6.205
+tune rms M=16 block=256 grid=16 us=5.690
+tune rms M=16 block=256 grid=16 us=5.688
+tune rms M=16 block=256 grid=16 us=5.891
+tune rms M=16 block=256 grid=16 us=5.790
+tune rms M=16 block=256 grid=16 us=5.688
+tune rms M=16 block=512 grid=16 us=4.763
+tune rms M=16 block=512 grid=16 us=4.659
+tune rms M=16 block=512 grid=16 us=4.672
+tune rms M=16 block=512 grid=16 us=4.874
+tune rms M=16 block=512 grid=16 us=4.875
+tune quant M=16 K=4096 block=128 grid=32 us=4.258
+tune quant M=16 K=4096 block=128 grid=32 us=4.254
+tune quant M=16 K=4096 block=128 grid=32 us=4.253
+tune quant M=16 K=4096 block=128 grid=32 us=4.258
+tune quant M=16 K=4096 block=256 grid=16 us=4.248
+tune quant M=16 K=4096 block=256 grid=16 us=4.253
+tune quant M=16 K=4096 block=256 grid=16 us=4.256
+tune quant M=16 K=4096 block=256 grid=16 us=4.258
+selected M=16 K=4096 fused=512/16 rms=512/16 quant=256/16
+details M=16 K=4096 fused_sf_bad=0 baseline_data_bad=0 baseline_sf_bad=0 probe_us=4.112 fused_GBs=31.0 probe_GBs=40.8 fused/probe=0.7597
+  16     4096         8.23       5.41    1.52x PASS(bad=0)
+tune fused M=256 block=128 grid=148 us=8.352
+tune fused M=256 block=128 grid=256 us=6.307
+tune fused M=256 block=128 grid=256 us=6.309
+tune fused M=256 block=128 grid=256 us=6.309
+tune fused M=256 block=128 grid=256 us=6.306
+tune fused M=256 block=256 grid=148 us=7.123
+tune fused M=256 block=256 grid=256 us=6.309
+tune fused M=256 block=256 grid=256 us=6.310
+tune fused M=256 block=256 grid=256 us=6.307
+tune fused M=256 block=256 grid=256 us=6.309
+tune fused M=256 block=512 grid=148 us=6.813
+tune fused M=256 block=512 grid=256 us=6.309
+tune fused M=256 block=512 grid=256 us=6.304
+tune fused M=256 block=512 grid=256 us=6.304
+tune fused M=256 block=512 grid=256 us=6.301
+tune rms M=256 block=128 grid=148 us=8.355
+tune rms M=256 block=128 grid=256 us=6.302
+tune rms M=256 block=128 grid=256 us=6.315
+tune rms M=256 block=128 grid=256 us=6.301
+tune rms M=256 block=128 grid=256 us=6.301
+tune rms M=256 block=256 grid=148 us=8.349
+tune rms M=256 block=256 grid=256 us=6.302
+tune rms M=256 block=256 grid=256 us=6.309
+tune rms M=256 block=256 grid=256 us=6.306
+tune rms M=256 block=256 grid=256 us=6.304
+tune rms M=256 block=512 grid=148 us=6.309
+tune rms M=256 block=512 grid=256 us=6.304
+tune rms M=256 block=512 grid=256 us=6.310
+tune rms M=256 block=512 grid=256 us=6.307
+tune rms M=256 block=512 grid=256 us=6.310
+tune quant M=256 K=4096 block=128 grid=512 us=4.261
+tune quant M=256 K=4096 block=128 grid=512 us=4.269
+tune quant M=256 K=4096 block=128 grid=512 us=4.261
+tune quant M=256 K=4096 block=128 grid=512 us=4.258
+tune quant M=256 K=4096 block=256 grid=256 us=4.259
+tune quant M=256 K=4096 block=256 grid=256 us=4.254
+tune quant M=256 K=4096 block=256 grid=256 us=4.243
+tune quant M=256 K=4096 block=256 grid=256 us=4.253
+selected M=256 K=4096 fused=512/256 rms=128/256 quant=256/256
+details M=256 K=4096 fused_sf_bad=0 baseline_data_bad=0 baseline_sf_bad=0 probe_us=4.112 fused_GBs=436.2 probe_GBs=653.4 fused/probe=0.6675
+  256    4096        10.26       6.16    1.66x PASS(bad=0)
+tune fused M=1024 block=128 grid=148 us=21.253
+tune fused M=1024 block=128 grid=296 us=14.490
+tune fused M=1024 block=128 grid=592 us=10.406
+tune fused M=1024 block=128 grid=1024 us=12.443
+tune fused M=1024 block=128 grid=1024 us=12.445
+tune fused M=1024 block=256 grid=148 us=15.218
+tune fused M=1024 block=256 grid=296 us=12.350
+tune fused M=1024 block=256 grid=592 us=10.299
+tune fused M=1024 block=256 grid=1024 us=10.406
+tune fused M=1024 block=256 grid=1024 us=10.398
+tune fused M=1024 block=512 grid=148 us=15.008
+tune fused M=1024 block=512 grid=296 us=12.341
+tune fused M=1024 block=512 grid=592 us=10.390
+tune fused M=1024 block=512 grid=1024 us=10.403
+tune fused M=1024 block=512 grid=1024 us=10.406
+tune rms M=1024 block=128 grid=148 us=16.544
+tune rms M=1024 block=128 grid=296 us=12.443
+tune rms M=1024 block=128 grid=592 us=9.070
+tune rms M=1024 block=128 grid=1024 us=8.354
+tune rms M=1024 block=128 grid=1024 us=8.358
+tune rms M=1024 block=256 grid=148 us=16.547
+tune rms M=1024 block=256 grid=296 us=12.451
+tune rms M=1024 block=256 grid=592 us=10.304
+tune rms M=1024 block=256 grid=1024 us=8.358
+tune rms M=1024 block=256 grid=1024 us=8.358
+tune rms M=1024 block=512 grid=148 us=14.496
+tune rms M=1024 block=512 grid=296 us=12.350
+tune rms M=1024 block=512 grid=592 us=10.398
+tune rms M=1024 block=512 grid=1024 us=10.402
+tune rms M=1024 block=512 grid=1024 us=10.402
+tune quant M=1024 K=4096 block=128 grid=592 us=8.352
+tune quant M=1024 K=4096 block=128 grid=1184 us=6.302
+tune quant M=1024 K=4096 block=128 grid=2048 us=6.306
+tune quant M=1024 K=4096 block=128 grid=2048 us=6.302
+tune quant M=1024 K=4096 block=256 grid=592 us=6.310
+tune quant M=1024 K=4096 block=256 grid=1024 us=6.306
+tune quant M=1024 K=4096 block=256 grid=1024 us=6.309
+tune quant M=1024 K=4096 block=256 grid=1024 us=6.309
+selected M=1024 K=4096 fused=256/592 rms=128/1024 quant=128/1184
+details M=1024 K=4096 fused_sf_bad=0 baseline_data_bad=0 baseline_sf_bad=0 probe_us=6.160 fused_GBs=1048.5 probe_GBs=1744.7 fused/probe=0.6010
+  1024   4096        14.35      10.25    1.40x PASS(bad=0)
+tune fused M=4096 block=128 grid=148 us=73.846
+tune fused M=4096 block=128 grid=296 us=43.173
+tune fused M=4096 block=128 grid=592 us=27.293
+tune fused M=4096 block=128 grid=1184 us=27.507
+tune fused M=4096 block=128 grid=4096 us=26.784
+tune fused M=4096 block=256 grid=148 us=49.314
+tune fused M=4096 block=256 grid=296 us=30.878
+tune fused M=4096 block=256 grid=592 us=23.202
+tune fused M=4096 block=256 grid=1184 us=23.709
+tune fused M=4096 block=256 grid=4096 us=24.744
+tune fused M=4096 block=512 grid=148 us=49.317
+tune fused M=4096 block=512 grid=296 us=30.880
+tune fused M=4096 block=512 grid=592 us=31.394
+tune fused M=4096 block=512 grid=1184 us=28.734
+tune fused M=4096 block=512 grid=4096 us=28.837
+tune rms M=4096 block=128 grid=148 us=53.197
+tune rms M=4096 block=128 grid=296 us=30.982
+tune rms M=4096 block=128 grid=592 us=22.696
+tune rms M=4096 block=128 grid=1184 us=18.592
+tune rms M=4096 block=128 grid=4096 us=18.584
+tune rms M=4096 block=256 grid=148 us=53.722
+tune rms M=4096 block=256 grid=296 us=32.928
+tune rms M=4096 block=256 grid=592 us=24.738
+tune rms M=4096 block=256 grid=1184 us=20.637
+tune rms M=4096 block=256 grid=4096 us=20.642
+tune rms M=4096 block=512 grid=148 us=45.630
+tune rms M=4096 block=512 grid=296 us=30.885
+tune rms M=4096 block=512 grid=592 us=26.778
+tune rms M=4096 block=512 grid=1184 us=26.790
+tune rms M=4096 block=512 grid=4096 us=26.789
+tune quant M=4096 K=4096 block=128 grid=592 us=16.744
+tune quant M=4096 K=4096 block=128 grid=1184 us=14.490
+tune quant M=4096 K=4096 block=128 grid=2368 us=14.486
+tune quant M=4096 K=4096 block=128 grid=8192 us=14.491
+tune quant M=4096 K=4096 block=256 grid=592 us=14.498
+tune quant M=4096 K=4096 block=256 grid=1184 us=14.498
+tune quant M=4096 K=4096 block=256 grid=2368 us=14.496
+tune quant M=4096 K=4096 block=256 grid=4096 us=14.498
+selected M=4096 K=4096 fused=256/592 rms=128/4096 quant=128/2368
+details M=4096 K=4096 fused_sf_bad=0 baseline_data_bad=3 baseline_sf_bad=1 probe_us=12.362 fused_GBs=1827.1 probe_GBs=3477.8 fused/probe=0.5254
+  4096   4096        32.85      23.53    1.40x PASS(bad=0)
+tune fused M=16384 block=128 grid=148 us=354.363
+tune fused M=16384 block=128 grid=296 us=192.816
+tune fused M=16384 block=128 grid=592 us=112.592
+tune fused M=16384 block=128 grid=1184 us=110.859
+tune fused M=16384 block=128 grid=16384 us=101.024
+tune fused M=16384 block=256 grid=148 us=230.613
+tune fused M=16384 block=256 grid=296 us=129.394
+tune fused M=16384 block=256 grid=592 us=86.898
+tune fused M=16384 block=256 grid=1184 us=86.024
+tune fused M=16384 block=256 grid=16384 us=92.418
+tune fused M=16384 block=512 grid=148 us=229.182
+tune fused M=16384 block=512 grid=296 us=129.182
+tune fused M=16384 block=512 grid=592 us=132.358
+tune fused M=16384 block=512 grid=1184 us=108.298
+tune fused M=16384 block=512 grid=16384 us=112.909
+tune rms M=16384 block=128 grid=148 us=252.531
+tune rms M=16384 block=128 grid=296 us=144.437
+tune rms M=16384 block=128 grid=592 us=90.419
+tune rms M=16384 block=128 grid=1184 us=67.795
+tune rms M=16384 block=128 grid=16384 us=57.304
+tune rms M=16384 block=256 grid=148 us=288.216
+tune rms M=16384 block=256 grid=296 us=160.158
+tune rms M=16384 block=256 grid=592 us=100.867
+tune rms M=16384 block=256 grid=1184 us=76.859
+tune rms M=16384 block=256 grid=16384 us=74.453
+tune rms M=16384 block=512 grid=148 us=226.003
+tune rms M=16384 block=512 grid=296 us=130.298
+tune rms M=16384 block=512 grid=592 us=99.944
+tune rms M=16384 block=512 grid=1184 us=96.368
+tune rms M=16384 block=512 grid=16384 us=100.514
+tune quant M=16384 K=4096 block=128 grid=592 us=74.750
+tune quant M=16384 K=4096 block=128 grid=1184 us=51.771
+tune quant M=16384 K=4096 block=128 grid=2368 us=48.088
+tune quant M=16384 K=4096 block=128 grid=32768 us=47.677
+tune quant M=16384 K=4096 block=256 grid=592 us=51.464
+tune quant M=16384 K=4096 block=256 grid=1184 us=47.269
+tune quant M=16384 K=4096 block=256 grid=2368 us=43.997
+tune quant M=16384 K=4096 block=256 grid=16384 us=49.110
+selected M=16384 K=4096 fused=256/1184 rms=128/16384 quant=256/2368
+details M=16384 K=4096 fused_sf_bad=1 baseline_data_bad=1 baseline_sf_bad=0 probe_us=39.091 fused_GBs=2000.3 probe_GBs=4399.1 fused/probe=0.4547
+  16384  4096       101.25      85.97    1.18x PASS(bad=6)
+tune fused M=4096 block=128 grid=148 us=111.773
+tune fused M=4096 block=128 grid=296 us=63.643
+tune fused M=4096 block=128 grid=592 us=41.019
+tune fused M=4096 block=128 grid=1184 us=42.152
+tune fused M=4096 block=128 grid=4096 us=38.659
+tune fused M=4096 block=256 grid=148 us=71.795
+tune fused M=4096 block=256 grid=296 us=44.602
+tune fused M=4096 block=256 grid=592 us=32.926
+tune fused M=4096 block=256 grid=1184 us=32.933
+tune fused M=4096 block=256 grid=4096 us=33.746
+tune fused M=4096 block=512 grid=148 us=59.558
+tune fused M=4096 block=512 grid=296 us=43.067
+tune fused M=4096 block=512 grid=592 us=39.067
+tune fused M=4096 block=512 grid=1184 us=37.016
+tune fused M=4096 block=512 grid=4096 us=39.074
+tune rms M=4096 block=128 grid=148 us=128.776
+tune rms M=4096 block=128 grid=296 us=75.427
+tune rms M=4096 block=128 grid=592 us=47.362
+tune rms M=4096 block=128 grid=1184 us=34.976
+tune rms M=4096 block=128 grid=4096 us=28.826
+tune rms M=4096 block=256 grid=148 us=97.331
+tune rms M=4096 block=256 grid=296 us=58.315
+tune rms M=4096 block=256 grid=592 us=39.787
+tune rms M=4096 block=256 grid=1184 us=31.187
+tune rms M=4096 block=256 grid=4096 us=32.930
+tune rms M=4096 block=512 grid=148 us=86.174
+tune rms M=4096 block=512 grid=296 us=53.410
+tune rms M=4096 block=512 grid=592 us=40.510
+tune rms M=4096 block=512 grid=1184 us=39.584
+tune rms M=4096 block=512 grid=4096 us=41.122
+tune quant M=4096 K=7168 block=128 grid=592 us=26.789
+tune quant M=4096 K=7168 block=128 grid=1184 us=22.693
+tune quant M=4096 K=7168 block=128 grid=2368 us=21.461
+tune quant M=4096 K=7168 block=128 grid=14336 us=22.584
+tune quant M=4096 K=7168 block=256 grid=592 us=22.680
+tune quant M=4096 K=7168 block=256 grid=1184 us=21.461
+tune quant M=4096 K=7168 block=256 grid=2368 us=20.645
+tune quant M=4096 K=7168 block=256 grid=7168 us=22.683
+selected M=4096 K=7168 fused=256/592 rms=128/4096 quant=256/2368
+details M=4096 K=7168 fused_sf_bad=0 baseline_data_bad=5 baseline_sf_bad=1 probe_us=17.182 fused_GBs=2290.2 probe_GBs=4378.6 fused/probe=0.5230
+  4096   7168        53.20      32.85    1.62x PASS(bad=3)
+tune fused M=16384 block=128 grid=148 us=571.554
+tune fused M=16384 block=128 grid=296 us=309.922
+tune fused M=16384 block=128 grid=592 us=178.794
+tune fused M=16384 block=128 grid=1184 us=177.874
+tune fused M=16384 block=128 grid=16384 us=157.699
+tune fused M=16384 block=256 grid=148 us=347.762
+tune fused M=16384 block=256 grid=296 us=198.667
+tune fused M=16384 block=256 grid=592 us=131.750
+tune fused M=16384 block=256 grid=1184 us=129.291
+tune fused M=16384 block=256 grid=16384 us=133.587
+tune fused M=16384 block=512 grid=148 us=264.971
+tune fused M=16384 block=512 grid=296 us=162.107
+tune fused M=16384 block=512 grid=592 us=158.112
+tune fused M=16384 block=512 grid=1184 us=139.426
+tune fused M=16384 block=512 grid=16384 us=151.714
+tune rms M=16384 block=128 grid=148 us=498.235
+tune rms M=16384 block=128 grid=296 us=283.811
+tune rms M=16384 block=128 grid=592 us=173.267
+tune rms M=16384 block=128 grid=1184 us=116.797
+tune rms M=16384 block=128 grid=16384 us=92.315
+tune rms M=16384 block=256 grid=148 us=376.429
+tune rms M=16384 block=256 grid=296 us=219.552
+tune rms M=16384 block=256 grid=592 us=141.258
+tune rms M=16384 block=256 grid=1184 us=111.570
+tune rms M=16384 block=256 grid=16384 us=107.578
+tune rms M=16384 block=512 grid=148 us=328.046
+tune rms M=16384 block=512 grid=296 us=195.589
+tune rms M=16384 block=512 grid=592 us=143.323
+tune rms M=16384 block=512 grid=1184 us=139.421
+tune rms M=16384 block=512 grid=16384 us=142.293
+tune quant M=16384 K=7168 block=128 grid=592 us=127.547
+tune quant M=16384 K=7168 block=128 grid=1184 us=87.718
+tune quant M=16384 K=7168 block=128 grid=2368 us=80.504
+tune quant M=16384 K=7168 block=128 grid=57344 us=79.974
+tune quant M=16384 K=7168 block=256 grid=592 us=86.285
+tune quant M=16384 K=7168 block=256 grid=1184 us=78.750
+tune quant M=16384 K=7168 block=256 grid=2368 us=73.890
+tune quant M=16384 K=7168 block=256 grid=28672 us=81.878
+selected M=16384 K=7168 fused=256/1184 rms=128/16384 quant=256/2368
+details M=16384 K=7168 fused_sf_bad=1 baseline_data_bad=7 baseline_sf_bad=2 probe_us=63.695 fused_GBs=2330.5 probe_GBs=4724.7 fused/probe=0.4933
+  16384  7168       165.30     129.13    1.28x PASS(bad=5)
+tune fused M=4096 block=128 grid=148 us=116.787
+tune fused M=4096 block=128 grid=296 us=65.699
+tune fused M=4096 block=128 grid=592 us=43.570
+tune fused M=4096 block=128 grid=1184 us=43.176
+tune fused M=4096 block=128 grid=4096 us=41.122
+tune fused M=4096 block=256 grid=148 us=74.150
+tune fused M=4096 block=256 grid=296 us=47.266
+tune fused M=4096 block=256 grid=592 us=36.614
+tune fused M=4096 block=256 grid=1184 us=35.590
+tune fused M=4096 block=256 grid=4096 us=37.029
+tune fused M=4096 block=512 grid=148 us=61.606
+tune fused M=4096 block=512 grid=296 us=43.174
+tune fused M=4096 block=512 grid=592 us=43.066
+tune fused M=4096 block=512 grid=1184 us=39.176
+tune fused M=4096 block=512 grid=4096 us=41.837
+tune rms M=4096 block=128 grid=148 us=105.011
+tune rms M=4096 block=128 grid=296 us=64.110
+tune rms M=4096 block=128 grid=592 us=43.579
+tune rms M=4096 block=128 grid=1184 us=34.971
+tune rms M=4096 block=128 grid=4096 us=32.827
+tune rms M=4096 block=256 grid=148 us=81.062
+tune rms M=4096 block=256 grid=296 us=51.779
+tune rms M=4096 block=256 grid=592 us=39.282
+tune rms M=4096 block=256 grid=1184 us=34.974
+tune rms M=4096 block=256 grid=4096 us=32.936
+tune rms M=4096 block=512 grid=148 us=90.226
+tune rms M=4096 block=512 grid=296 us=56.680
+tune rms M=4096 block=512 grid=592 us=43.171
+tune rms M=4096 block=512 grid=1184 us=43.379
+tune rms M=4096 block=512 grid=4096 us=43.789
+tune quant M=4096 K=8192 block=128 grid=592 us=30.984
+tune quant M=4096 K=8192 block=128 grid=1184 us=25.653
+tune quant M=4096 K=8192 block=128 grid=2368 us=24.738
+tune quant M=4096 K=8192 block=128 grid=16384 us=24.734
+tune quant M=4096 K=8192 block=256 grid=592 us=26.069
+tune quant M=4096 K=8192 block=256 grid=1184 us=24.637
+tune quant M=4096 K=8192 block=256 grid=2368 us=23.299
+tune quant M=4096 K=8192 block=256 grid=8192 us=24.734
+selected M=4096 K=8192 fused=256/1184 rms=128/4096 quant=256/2368
+details M=4096 K=8192 fused_sf_bad=2 baseline_data_bad=2 baseline_sf_bad=0 probe_us=18.670 fused_GBs=2397.1 probe_GBs=4605.5 fused/probe=0.5205
+  4096   8192        57.40      35.87    1.60x PASS(bad=6)
+tune fused M=16384 block=128 grid=148 us=574.723
+tune fused M=16384 block=128 grid=296 us=317.298
+tune fused M=16384 block=128 grid=592 us=186.576
+tune fused M=16384 block=128 grid=1184 us=184.638
+tune fused M=16384 block=128 grid=16384 us=163.946
+tune fused M=16384 block=256 grid=148 us=346.274
+tune fused M=16384 block=256 grid=296 us=199.795
+tune fused M=16384 block=256 grid=592 us=139.008
+tune fused M=16384 block=256 grid=1184 us=136.451
+tune fused M=16384 block=256 grid=16384 us=139.430
+tune fused M=16384 block=512 grid=148 us=269.574
+tune fused M=16384 block=512 grid=296 us=164.053
+tune fused M=16384 block=512 grid=592 us=164.149
+tune fused M=16384 block=512 grid=1184 us=147.509
+tune fused M=16384 block=512 grid=16384 us=158.011
+tune rms M=16384 block=128 grid=148 us=395.781
+tune rms M=16384 block=128 grid=296 us=233.786
+tune rms M=16384 block=128 grid=592 us=153.968
+tune rms M=16384 block=128 grid=1184 us=115.667
+tune rms M=16384 block=128 grid=16384 us=98.670
+tune rms M=16384 block=256 grid=148 us=303.878
+tune rms M=16384 block=256 grid=296 us=183.717
+tune rms M=16384 block=256 grid=592 us=135.946
+tune rms M=16384 block=256 grid=1184 us=119.053
+tune rms M=16384 block=256 grid=16384 us=106.763
+tune rms M=16384 block=512 grid=148 us=341.152
+tune rms M=16384 block=512 grid=296 us=207.782
+tune rms M=16384 block=512 grid=592 us=156.720
+tune rms M=16384 block=512 grid=1184 us=152.222
+tune rms M=16384 block=512 grid=16384 us=153.758
+tune quant M=16384 K=8192 block=128 grid=592 us=144.950
+tune quant M=16384 K=8192 block=128 grid=1184 us=98.363
+tune quant M=16384 K=8192 block=128 grid=2368 us=90.022
+tune quant M=16384 K=8192 block=128 grid=65536 us=90.376
+tune quant M=16384 K=8192 block=256 grid=592 us=97.848
+tune quant M=16384 K=8192 block=256 grid=1184 us=89.413
+tune quant M=16384 K=8192 block=256 grid=2368 us=82.283
+tune quant M=16384 K=8192 block=256 grid=32768 us=92.474
+selected M=16384 K=8192 fused=256/1184 rms=128/16384 quant=256/2368
+details M=16384 K=8192 fused_sf_bad=1 baseline_data_bad=12 baseline_sf_bad=2 probe_us=72.042 fused_GBs=2509.3 probe_GBs=4774.1 fused/probe=0.5256
+  16384  8192       180.99     137.07    1.32x PASS(bad=2)

@@ -21,22 +21,24 @@ FLAGS += -DSTAGES=$(STAGES)
 endif
 
 GENCODE = -gencode arch=compute_$(ARCH),code=sm_$(ARCH)
+DEPFLAGS = -MMD -MP -MF $@.d -MT $@
+-include $(wildcard bin/*/*.d)
 
 bin/%: %.cu common.h
 	@mkdir -p $(dir $@)
-	$(NVCC) $(FLAGS) $(GENCODE) -o $@ $<
+	$(NVCC) $(FLAGS) $(GENCODE) $(DEPFLAGS) -o $@ $<
 
 # 消费端验证(问题 5.3)要链 cublasLt
 bin/m5_lowprec/test_fp4_gemm: m5_lowprec/test_fp4_gemm.cu common.h
 	@mkdir -p $(dir $@)
-	$(NVCC) $(FLAGS) $(GENCODE) -lcublasLt -o $@ $<
+	$(NVCC) $(FLAGS) $(GENCODE) $(DEPFLAGS) -lcublasLt -o $@ $<
 
 # M4(m4_gemm/)要链 cublas(判测参考)与 cuda 驱动 API(tensor map)。
 # 运行时若报 libcublas.so 找不到,把 CUDA 安装目录下的 lib 路径加进
 # LD_LIBRARY_PATH。
 bin/m4_gemm/%: m4_gemm/%.cu common.h
 	@mkdir -p $(dir $@)
-	$(NVCC) $(FLAGS) $(GENCODE) -lcublas -lcuda -o $@ $<
+	$(NVCC) $(FLAGS) $(GENCODE) $(DEPFLAGS) -lcublas -lcuda -o $@ $<
 
 run/%: bin/%
 	./$<

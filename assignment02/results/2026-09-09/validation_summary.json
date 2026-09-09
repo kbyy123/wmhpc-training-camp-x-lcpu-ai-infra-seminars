@@ -1,0 +1,23 @@
+{
+  "stages.txt": {
+    "strict_gemm_passes": 24
+  },
+  "pair_stages.txt": {
+    "strict_gemm_passes": 18
+  },
+  "nvfp4": {
+    "hardware_encoder_values": 202864,
+    "byte_exact_shapes": 3,
+    "cublaslt_shapes": 3
+  },
+  "extra_edge_checks": 6,
+  "memcheck": "both pipelines: 0 errors",
+  "fused_shapes_passed": 10,
+  "thin_shapes_measured": 63,
+  "python_tests": "3 passed; outlier experiment complete",
+  "tilelang_compiled_targets": [
+    "sm_90a",
+    "sm_100a"
+  ],
+  "status": "PASS: all requested required code, experiments, reports and 4.4(a) verified"
+}

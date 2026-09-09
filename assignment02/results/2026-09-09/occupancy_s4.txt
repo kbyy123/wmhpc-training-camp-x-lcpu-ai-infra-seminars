@@ -1,0 +1,55 @@
+==PROF== Connected to process 256486 (/home/lcpu/60403270/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda/bin/m4_gemm/pipeline_s4)
+==PROF== Profiling "gemm_pipeline": 0%....50%....100% - 3 passes
+resources group=1 S=4 dynamic_smem=99328 resident_blocks_per_SM=1
+[pipeline group=1 S=4] M=4096 N=4096 K=4096  PASS(bad=0)  0.548002 ms  250.8 TFLOPS  (cuBLAS 1060.1, 达成率 24%)
+==PROF== Disconnected from process 256486
+[256486] pipeline_s4@127.0.0.1
+  gemm_pipeline(const __nv_bfloat16 *, const __nv_bfloat16 *, float *, int, int, int, CUtensorMap_st, CUtensorMap_st) (32, 64, 1)x(128, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: Launch Statistics
+    -------------------------------- --------------- ---------------
+    Metric Name                          Metric Unit    Metric Value
+    -------------------------------- --------------- ---------------
+    Block Size                                                   128
+    Cluster Scheduling Policy                           PolicySpread
+    Cluster Size                                                   0
+    Function Cache Configuration                     CachePreferNone
+    Grid Size                                                   2048
+    Preferred Cluster Size                                         0
+    Registers Per Thread             register/thread              32
+    Shared Memory Configuration Size           Kbyte          233.47
+    Driver Shared Memory Per Block       Kbyte/block            1.02
+    Dynamic Shared Memory Per Block      Kbyte/block           99.33
+    Static Shared Memory Per Block       Kbyte/block            1.02
+    # SMs                                         SM             148
+    Stack Size                                                  1024
+    Threads                                   thread          262144
+    # TPCs                                                        74
+    Enabled TPC IDs                                              all
+    Uses Green Context                                             0
+    Waves Per SM                                                6.92
+    -------------------------------- --------------- ---------------
+
+    Section: Occupancy
+    ------------------------------- ----------- ------------
+    Metric Name                     Metric Unit Metric Value
+    ------------------------------- ----------- ------------
+    Max Active Clusters                 cluster            0
+    Max Cluster Size                      block            8
+    Overall GPU Occupancy                     %            0
+    Cluster Occupancy                         %            0
+    Block Limit Barriers                  block           32
+    Block Limit SM                        block           32
+    Block Limit Registers                 block           16
+    Block Limit Shared Mem                block            2
+    Block Limit Warps                     block           16
+    Theoretical Active Warps per SM        warp            8
+    Theoretical Occupancy                     %        12.50
+    Achieved Occupancy                        %        12.10
+    Achieved Active Warps Per SM           warp         7.74
+    ------------------------------- ----------- ------------
+
+    OPT   Est. Local Speedup: 87.5%                                                                                     
+          The 2.00 theoretical warps per scheduler this kernel can issue according to its occupancy are below the       
+          hardware maximum of 16. This kernel's theoretical occupancy (12.5%) is limited by the required amount of      
+          shared memory.                                                                                                
+

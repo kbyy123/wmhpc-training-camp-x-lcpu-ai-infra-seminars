@@ -1,0 +1,2 @@
+make: 'bin/m4_gemm/00_naive_ladder' is up to date.
+make: 'bin/m4_gemm/inspect_pipeline' is up to date.

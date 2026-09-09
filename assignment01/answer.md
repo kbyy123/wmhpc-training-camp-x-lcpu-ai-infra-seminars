@@ -396,6 +396,7 @@ TODO
 | 边界处理 | 用户 | TODO | TODO | TODO |
 | tile / block 尺寸的选择 | 用户 | TODO | TODO | TODO |
 | block 内同步 | 用户 | TODO | TODO | TODO |
+| Tensor Core 指令选择与供数布局 | 用户选 MMA/WMMA 路径与数据布局；编译器完成指令编码 | 用户给 tile 与语义，编译器选指令和供数布局 | 用户给 dot/tile/配置，编译器完成具体指令与布局 | 用户给 T.gemm/tile/stages/target，编译器 lowering 选指令、swizzle 与供数路径；本次 sm_100a 实测为 mma.sync |
 
 ### 7.6 FILL-IN
 

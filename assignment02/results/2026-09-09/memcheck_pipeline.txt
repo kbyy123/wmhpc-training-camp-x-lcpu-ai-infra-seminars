@@ -1,0 +1,4 @@
+========= COMPUTE-SANITIZER
+resources group=1 S=3 dynamic_smem=74752 resident_blocks_per_SM=3
+[pipeline group=1 S=3] M=256 N=128 K=320  PASS(bad=0)  0.435181 ms  0.0 TFLOPS  (cuBLAS 0.7, 达成率 7%)
+========= ERROR SUMMARY: 0 errors

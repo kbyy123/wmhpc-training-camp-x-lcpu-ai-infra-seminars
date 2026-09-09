@@ -1,0 +1,54 @@
+==PROF== Connected to process 248642 (/home/lcpu/60403270/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda/bin/m5_lowprec/04_fused_rms_nvfp4)
+# M      K        2step_us   fused_us  speedup
+tune fused M=16384 block=128 grid=148 us=578.422
+tune fused M=16384 block=128 grid=296 us=319.400
+tune fused M=16384 block=128 grid=592 us=187.696
+tune fused M=16384 block=128 grid=1184 us=184.424
+tune fused M=16384 block=128 grid=16384 us=164.360
+tune fused M=16384 block=256 grid=148 us=348.112
+tune fused M=16384 block=256 grid=296 us=200.909
+tune fused M=16384 block=256 grid=592 us=142.438
+tune fused M=16384 block=256 grid=1184 us=146.374
+tune fused M=16384 block=256 grid=16384 us=144.026
+tune fused M=16384 block=512 grid=148 us=270.194
+tune fused M=16384 block=512 grid=296 us=165.683
+tune fused M=16384 block=512 grid=592 us=165.019
+tune fused M=16384 block=512 grid=1184 us=148.794
+tune fused M=16384 block=512 grid=16384 us=158.926
+tune rms M=16384 block=128 grid=148 us=396.909
+tune rms M=16384 block=128 grid=296 us=235.635
+tune rms M=16384 block=128 grid=592 us=154.888
+tune rms M=16384 block=128 grid=1184 us=116.286
+tune rms M=16384 block=128 grid=16384 us=99.592
+tune rms M=16384 block=256 grid=148 us=303.570
+tune rms M=16384 block=256 grid=296 us=184.333
+tune rms M=16384 block=256 grid=592 us=135.744
+tune rms M=16384 block=256 grid=1184 us=118.643
+tune rms M=16384 block=256 grid=16384 us=106.659
+tune rms M=16384 block=512 grid=148 us=340.544
+tune rms M=16384 block=512 grid=296 us=206.965
+tune rms M=16384 block=512 grid=592 us=156.731
+tune rms M=16384 block=512 grid=1184 us=152.118
+tune rms M=16384 block=512 grid=16384 us=153.856
+tune quant M=16384 K=8192 block=128 grid=592 us=144.136
+tune quant M=16384 K=8192 block=128 grid=1184 us=98.562
+tune quant M=16384 K=8192 block=128 grid=2368 us=90.421
+tune quant M=16384 K=8192 block=128 grid=65536 us=90.982
+tune quant M=16384 K=8192 block=256 grid=592 us=97.435
+tune quant M=16384 K=8192 block=256 grid=1184 us=89.606
+tune quant M=16384 K=8192 block=256 grid=2368 us=82.398
+tune quant M=16384 K=8192 block=256 grid=32768 us=92.371
+selected M=16384 K=8192 fused=256/592 rms=128/16384 quant=256/2368
+details M=16384 K=8192 fused_sf_bad=1 baseline_data_bad=12 baseline_sf_bad=2 probe_us=72.012 fused_GBs=2456.0 probe_GBs=4776.1 fused/probe=0.5142
+  16384  8192       181.10     140.04    1.29x PASS(bad=2)
+==PROF== Disconnected from process 248642
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","Section Name","Metric Name","Metric Unit","Metric Value"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","dram__bytes_read.sum","byte","268553216"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","dram__bytes_write.sum","byte","56939264"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","dram__throughput.avg.pct_of_peak_sustained_elapsed","%","30.28"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","gpu__time_duration.sum","ns","140160"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","launch__occupancy_limit_shared_mem","block","14"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","launch__registers_per_thread","register/thread","63"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","launch__shared_mem_per_block","byte/block","1056"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","lts__t_bytes.sum","byte","609609248"
+"0","248642","04_fused_rms_nvfp4","127.0.0.1","void fused_rms_kernel<256>(const __nv_bfloat16 *, const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int, float)","1","7","(256, 1, 1)","(592, 1, 1)","0","10.3","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","65.40"

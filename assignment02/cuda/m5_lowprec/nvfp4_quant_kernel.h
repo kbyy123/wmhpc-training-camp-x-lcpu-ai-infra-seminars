@@ -24,17 +24,25 @@
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
 #include "nvfp4_common.h"
+#include "quant_device.h"
 
 template <int BLOCK>
 __global__ void nvfp4_quant_kernel(const __nv_bfloat16* __restrict__ in,
                                    uint8_t* __restrict__ dataOut,
                                    uint8_t* __restrict__ sfOut, int M, int K) {
-    // TODO: 实现。
+    const int groups=K/16, nt=nvfp4_num_ktiles(K);
+    for(size_t g=(size_t)blockIdx.x*BLOCK+threadIdx.x; g<(size_t)M*groups; g+=(size_t)gridDim.x*BLOCK) {
+        float v[16];
+        load_group(in+g*16,v);
+        quant_group(v,dataOut+g*8,sfOut+sf_swizzled_offset(g/groups,g%groups,nt));
+    }
 }
 
 // 判测和 5.4 会按这个签名调用;grid 大小你自己定,写在这里。
 inline void launch_nvfp4_quant(const __nv_bfloat16* in, uint8_t* dataOut,
                                uint8_t* sfOut, int M, int K, int sms) {
-    // TODO: 选择 grid/block 并启动 nvfp4_quant_kernel。
-    (void)in; (void)dataOut; (void)sfOut; (void)M; (void)K; (void)sms;
+    constexpr int block=128;
+    const int count=(M*(K/16)+block-1)/block;
+    const int grid=count<sms*8 ? count : sms*8;
+    nvfp4_quant_kernel<block><<<grid,block>>>(in,dataOut,sfOut,M,K);
 }

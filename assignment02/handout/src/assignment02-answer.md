@@ -419,6 +419,14 @@ make run/m3_tcgen05/04_cta_pair
 
 # 完整 GEMM
 
+> 本次补充实验于 2026-09-09 在 `b300-vscode` 经 Slurm 作业 23261 分配的单块 NVIDIA B300 SXM6 AC 上执行，CC 10.3、148 SM、L2 132,644,864 B、每 SM shared memory 233,472 B，驱动 580.126.09、CUDA 13.0.88。测前、测后分配到的卡均无其他计算进程，记录见 `results/2026-09-09/gpu_*.txt`。
+>
+> 以下 TFLOPS 按 FMA=2 FLOP；M4 梯子为 4096³、bf16 输入/fp32 输出，只有 assignment01 原始 naive kernel 使用 fp32。计时采用 CUDA events，预热后取多次平均；不把 Nsight Compute 下受重放、缓存清理影响的时间作为常规性能结果。4.5 沿用 0.2 的 2250 TFLOPS、8000 GB/s 理论分母，平衡点为 281.25 FLOP/B，不能把它当成本机当前时钟的实测峰值。
+>
+> 复现入口为 `srun --jobid=<自己的分配号> -n1 bash assignment02/run_requested.sh`，归因指标由 `profile_requested.sh` 生成。报告内结果对应 `assignment02/results/2026-09-09/` 的原始日志；naive 对照保留 assignment01 kernel 原始函数体，只用 cuBLAS 替换其固定 1024³ 的 CPU 判测外壳，完成同卡 4096³ 严格对拍。
+
+
+
 本模块将 3.2 的单 tile 实现扩展为完整的 B300 GEMM，并依次加入
 tiling、TMA 和多级 pipeline。实验统一使用 4096³ 的 bf16 GEMM，
 tile 大小固定为 128×64×64，并与 cuBLAS 结果进行严格相等比较。
@@ -434,11 +442,11 @@ assignment01 Bonus 中的 naive matmul。由于该实现使用 fp32，只比较�
 
 | 实现 | TFLOPS | 对 cuBLAS 达成率 | 一句话：时间主要花在哪 |
 |---|---|---|---|
-| naive（assignment01，fp32） | | | |
-| 4.1 tiled | | | |
-| 4.2 TMA | | | |
-| 4.3 pipeline（S=3） | | | |
-| cuBLAS | | 100% | |
+| naive（assignment01，fp32） | 3.42 | 0.32% | 每个输出串行 K 归约，依赖 CUDA Core 与重复读数 |
+| 4.1 tiled | 30.80 | 2.91% | 普通 load/store、逐元素 swizzle 与同步 |
+| 4.2 TMA | 416.10 | 39.30% | 单缓冲供数、等待与 epilogue |
+| 4.3 pipeline（S=3） | 314.80 | 29.73% | 搬运/计算可重叠，但 SMEM 压低块间并发 |
+| cuBLAS | 1058.9 | 100% | 本次 S=3 同进程参考 |
 
 
 ### 4.1 {.prob type=FROM-SCRATCH file=cuda/m4_gemm/01_tiled.cu}
@@ -518,8 +526,8 @@ cd m4_gemm && ./sweep_stages.sh
 
    | 形状 | S=2 | S=3 | S=4 | S=6 |
    |---|---|---|---|---|
-   | 4096³ | | | | |
-   | 256 × 4096 × 16384 | | | | |
+   | 4096³ | 358.8 | 314.8 | 251.2 | 145.8 |
+   | 256 × 4096 × 16384 | 137.9 | 139.7 | 138.5 | 139.8 |
 
    比较两个形状对 `STAGES` 的敏感程度，并结合 shared memory 用量、
    每个 SM 可同时驻留的 block 数以及 block 间并发能够隐藏的延迟进行解释。
@@ -534,6 +542,40 @@ cd m4_gemm && ./sweep_stages.sh
 
    (c) 如果继续增大 tile 或增加 stage 数，shared memory 与 TMEM
    哪一个会先成为容量限制？结合 3.4(c) 的结果说明。
+
+> 实现位于 `cuda/m4_gemm/03_pipeline.cu` 与共用的 `pipeline_core.h`。每个 stage 独立维护 `full`、`empty` 两个 mbarrier；第 i 轮的 full phase 为 `(i // S) & 1`，复用时等待上一代 empty，即 `((i // S) - 1) & 1`。`next` 单调记录已经发出的 TMA，消费当前轮前必须补发；机会式预取只能跳过更深的轮次。最后还先同步发射线程与 epilogue 线程，再等待最终 empty，避免其他 warp 将早期同 parity 的完成误认成最终结果。同步与 128B swizzle 按 [CUDA Programming Guide 的异步拷贝章节](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-copies.html)核对。
+>
+> `stages.txt` 的 24 项严格对拍全部 `PASS(bad=0)`，覆盖 K=64/128/320、1024³、4096³ 与小 M 长 K；S=3 的循环复用用例同时通过 Compute Sanitizer memcheck，零错误。上方 stage 表单位为 TFLOPS。由 Nsight Compute 的 Occupancy/Launch Statistics 得到：
+>
+> | S | stage 数据 SMEM/CTA | SMEM 驻留上限 block/SM | 实测 occupancy |
+> |---|---:|---:|---:|
+> | 2 | 48 KiB | 4 | 21.63% |
+> | 3 | 72 KiB | 3 | 17.12% |
+> | 4 | 96 KiB | 2 | 12.10% |
+> | 6 | 144 KiB | 1 | 6.22% |
+>
+> 上表 stage 数据之外还有动态对齐余量、静态 barrier 区及驱动保留区；S=3 的总量为 76,800 B/block。普通运行中的 CUDA occupancy API 曾返回 1，而 NCU 实际记录了 12 个理论 active warps/SM、约 11 个实测 active warps/SM，memcheck 下 API 也返回 3；这里保留原始差异，驻留分析采用 NCU 证据，不能将普通 API 输出误写成实际始终单 block 驻留。
+>
+> 4096³ 有 2048 个 CTA，stage 从 2 增至 6 后，块间并发由 4 降到 1，更多预取不足以补偿并发损失。256×4096×16384 只有 128 个 CTA，小于本机 148 SM，本来就没有多个 block/SM 的供给；S≥3 后吞吐几乎不变，说明当前 tile 的搬运/发射延迟已基本被覆盖。不能由大矩阵的下降趋势推出所有形状都应使用 S=2。
+>
+> S=3 的稳态时空示意如下，横向为先后发生的事件窗口，非硬件采样轨迹；`Tj` 表示装入第 j 个 K tile，`Mj` 表示消费该 tile。
+>
+> ```text
+> 时间窗口          0        1        2        3        4        5
+> MMA              M0       M1       M2       M3       M4       M5
+> stage 0          M0       T3       等待     M3       T6       等待
+> stage 1          已满     M1       T4       等待     M4       T7
+> stage 2          已满     已满     M2       T5       等待     M5
+> 依赖：Ts完成 -> full到达 -> Ms发射/完成 -> empty到达 -> T(s+3)
+> ```
+>
+> (a) 4.1 的主要成本是普通指令 staging；4.2 以 TMA 替代逐元素装载、地址运算和 swizzle 后提升明显；4.3 增加重叠，但本实现 S=3 比单缓冲 TMA 更慢，不能把“有流水”当作性能提升的充分条件。NCU 的 S=3 SM 吞吐为 43.03%、DRAM 吞吐仅 3.40%，HBM 不是主瓶颈；约 3.90 GB 的 L2 流量也远多于一次性输入输出字节数，tile 重读、层级供数和控制成本仍在。
+>
+> (b) naive 到 tiled 引入 Tensor Core 与 tile 复用，避免每个输出点都走完整 CUDA Core 标量归约；tiled 到 TMA 减少普通 load/store、swizzle 地址计算及其寄存器中转；TMA 到 pipeline 试图隐藏单缓冲等待，代价是更多 SMEM、barrier 状态和较低 occupancy。梯子表中的 cuBLAS 分母统一取 S=3 同进程测量，另两级单独运行的参考值可能略有波动。
+>
+> (c) 固定 BM=128、BN=64、BK=64 时，每加一级需 24 KiB SMEM，而累加器一直复用同一块 128×64 fp32 TMEM，每 CTA 为 32 KiB、64 列，不随 S 增长，因此扩 stages 首先撞上 SMEM。增大 BN 或同时保留多块累加器才增加 TMEM 压力，容量限制取决于具体扩展方向；不能把这一结论无条件推广到任意更大 tile。3.4 的 B 分片节约正可用来增加同一 SMEM 预算内的深度，4.4(a) 已实测验证。
+
+
 
 :::
 
@@ -550,6 +592,18 @@ cd m4_gemm && ./sweep_stages.sh
 (c) 自由优化当前 kernel，提高相对 cuBLAS 的性能，并记录每一步优化
 解决了什么问题。
 
+
+> 4.4(a) 实现位于 `cuda/m4_gemm/04_pipeline_pair.cu`，两个 CTA 构成 `(2,1,1)` cluster，合算 256×64 输出 tile。每个 CTA 保留自己的 128×64 A 与 32×64 B，通过 cluster 同步确认两侧 TMA 到达后，由 rank 0 发射 `tcgen05.mma.cta_group::2`；完成信号 multicast 至两侧 empty barrier，两侧各读自己的 TMEM 128 行，并在 cluster 都完成 epilogue 后释放。
+>
+> 每 CTA 的 B 数据由 8 KiB 降至 4 KiB，每 stage 总量由 24 KiB 降至 20 KiB；TMEM 仍各占 64 列。由此实现 S=10 的 200 KiB stage 数据，动态申请共 205,824 B；相同 S=10 的单 CTA 数据就需 240 KiB，超过本机单 block 的 opt-in 容量。
+>
+> | S | stage 数据 SMEM/CTA | 4096³ TFLOPS | 256×4096×16384 TFLOPS |
+> |---|---:|---:|---:|
+> | 3 | 60 KiB | 170.0 | 68.5 |
+> | 6 | 120 KiB | 77.2 | 69.5 |
+> | 10 | 200 KiB | 78.0 | 69.4 |
+>
+> `pair_stages.txt` 的 18 项全部 `PASS(bad=0)`，包含 K 小于 stage 数、非整圈复用及长 K；配对版本的 memcheck 也为零错误。本实现每个 K tile 仍需 cluster 级就绪同步，两个 CTA 的进度相互约束；深度增加没有消除这些成本，实测比单 CTA 更慢。结论是 B 分片确实换到了容量，本次实现尚未将容量优势转化为吞吐优势。
 
 ### 4.5 {.prob type=EXPERIMENT file=cuda/m4_gemm/05_thin_gemm.cu}
 
@@ -608,6 +662,82 @@ kernel 的原因。
 使用这一行的实验结果作为后续分析的参考。
 
 
+> 预测口径为 $AI=MNK/(MK+NK+MN)$、$P_{\mathrm{roof}}=\min(2250,8AI)$ TFLOPS；完整形状及两个独立 roof 保存在 thin_roofs.csv，运行前由 kernels/thin_roofline.py 生成。thin_gemm.txt 保留全部 63 行原始时间、TFLOPS 和有效 GB/s。下表 %TC 的分母是 2250，%BW 的分母是 $8AI$，而非混用较小 roof。
+>
+> | 投影 | M | AI FLOP/B | 较小 roof TFLOPS | 实测 TFLOPS | %TC | %BW |
+> |---|---:|---:|---:|---:|---:|---:|
+> | f_b_proj | 1 | 0.99 | 7.9 | 0.1 | 0.0% | 1.2% |
+> | f_b_proj | 8 | 7.49 | 59.9 | 0.5 | 0.0% | 0.9% |
+> | f_b_proj | 16 | 14.09 | 112.7 | 1.5 | 0.1% | 1.3% |
+> | f_b_proj | 64 | 41.51 | 332.1 | 5.9 | 0.3% | 1.8% |
+> | f_b_proj | 256 | 80.84 | 646.7 | 23.5 | 1.0% | 3.6% |
+> | f_b_proj | 1024 | 105.93 | 847.4 | 87.0 | 3.9% | 10.3% |
+> | f_b_proj | 4096 | 114.84 | 918.7 | 199.4 | 8.9% | 21.7% |
+> | f_b_proj | 16384 | 117.31 | 938.5 | 335.6 | 14.9% | 35.8% |
+> | f_b_proj | 65536 | 117.94 | 943.5 | 414.5 | 18.4% | 43.9% |
+> | q_b_proj | 1 | 1.00 | 8.0 | 0.6 | 0.0% | 7.1% |
+> | q_b_proj | 8 | 7.93 | 63.4 | 7.0 | 0.3% | 11.0% |
+> | q_b_proj | 16 | 15.73 | 125.8 | 20.1 | 0.9% | 16.0% |
+> | q_b_proj | 64 | 59.84 | 478.8 | 79.6 | 3.5% | 16.6% |
+> | q_b_proj | 256 | 200.35 | 1602.8 | 296.2 | 13.2% | 18.5% |
+> | q_b_proj | 1024 | 485.05 | 2250.0 | 726.4 | 32.3% | 18.7% |
+> | q_b_proj | 4096 | 752.33 | 2250.0 | 1026.3 | 45.6% | 17.1% |
+> | q_b_proj | 16384 | 872.52 | 2250.0 | 1196.3 | 53.2% | 17.1% |
+> | q_b_proj | 65536 | 908.82 | 2250.0 | 1264.1 | 56.2% | 17.4% |
+> | o_proj | 1 | 1.00 | 8.0 | 3.5 | 0.2% | 43.6% |
+> | o_proj | 8 | 7.95 | 63.6 | 30.6 | 1.4% | 48.2% |
+> | o_proj | 16 | 15.80 | 126.4 | 60.8 | 2.7% | 48.1% |
+> | o_proj | 64 | 60.92 | 487.3 | 189.9 | 8.4% | 39.0% |
+> | o_proj | 256 | 212.91 | 1703.3 | 570.1 | 25.3% | 33.5% |
+> | o_proj | 1024 | 565.89 | 2250.0 | 806.5 | 35.8% | 17.8% |
+> | o_proj | 4096 | 966.47 | 2250.0 | 1197.6 | 53.2% | 15.5% |
+> | o_proj | 16384 | 1174.28 | 2250.0 | 1254.5 | 55.8% | 13.4% |
+> | o_proj | 65536 | 1240.99 | 2250.0 | 1312.8 | 58.3% | 13.2% |
+> | fused_qkv_a_proj | 1 | 1.00 | 8.0 | 3.0 | 0.1% | 37.1% |
+> | fused_qkv_a_proj | 8 | 7.96 | 63.7 | 23.6 | 1.0% | 37.1% |
+> | fused_qkv_a_proj | 16 | 15.84 | 126.8 | 46.2 | 2.1% | 36.4% |
+> | fused_qkv_a_proj | 64 | 61.58 | 492.7 | 136.8 | 6.1% | 27.8% |
+> | fused_qkv_a_proj | 256 | 221.28 | 1770.2 | 451.1 | 20.0% | 25.5% |
+> | fused_qkv_a_proj | 1024 | 629.11 | 2250.0 | 883.2 | 39.3% | 17.5% |
+> | fused_qkv_a_proj | 4096 | 1166.68 | 2250.0 | 1110.2 | 49.3% | 11.9% |
+> | fused_qkv_a_proj | 16384 | 1483.62 | 2250.0 | 1162.3 | 51.7% | 9.8% |
+> | fused_qkv_a_proj | 65536 | 1591.72 | 2250.0 | 1301.9 | 57.9% | 10.2% |
+> | in_proj_qkvgfab | 1 | 1.00 | 8.0 | 4.6 | 0.2% | 57.7% |
+> | in_proj_qkvgfab | 8 | 7.98 | 63.8 | 38.2 | 1.7% | 59.9% |
+> | in_proj_qkvgfab | 16 | 15.92 | 127.4 | 72.9 | 3.2% | 57.2% |
+> | in_proj_qkvgfab | 64 | 62.80 | 502.4 | 312.7 | 13.9% | 62.2% |
+> | in_proj_qkvgfab | 256 | 237.82 | 1902.6 | 859.1 | 38.2% | 45.2% |
+> | in_proj_qkvgfab | 1024 | 784.25 | 2250.0 | 1170.6 | 52.0% | 18.7% |
+> | in_proj_qkvgfab | 4096 | 1842.70 | 2250.0 | 1149.4 | 51.1% | 7.8% |
+> | in_proj_qkvgfab | 16384 | 2781.04 | 2250.0 | 1270.9 | 56.5% | 5.7% |
+> | in_proj_qkvgfab | 65536 | 3186.74 | 2250.0 | 1293.6 | 57.5% | 5.1% |
+> | dense_down_proj | 1 | 1.00 | 8.0 | 4.3 | 0.2% | 54.3% |
+> | dense_down_proj | 8 | 7.98 | 63.9 | 37.6 | 1.7% | 58.9% |
+> | dense_down_proj | 16 | 15.93 | 127.5 | 73.1 | 3.2% | 57.4% |
+> | dense_down_proj | 64 | 62.96 | 503.7 | 259.2 | 11.5% | 51.5% |
+> | dense_down_proj | 256 | 240.15 | 1921.2 | 915.7 | 40.7% | 47.7% |
+> | dense_down_proj | 1024 | 810.08 | 2250.0 | 937.8 | 41.7% | 14.5% |
+> | dense_down_proj | 4096 | 1991.95 | 2250.0 | 1273.4 | 56.6% | 8.0% |
+> | dense_down_proj | 16384 | 3135.63 | 2250.0 | 1279.3 | 56.9% | 5.1% |
+> | dense_down_proj | 65536 | 3661.14 | 2250.0 | 1318.6 | 58.6% | 4.5% |
+> | dense_gate_up_proj | 1 | 1.00 | 8.0 | 5.7 | 0.3% | 71.0% |
+> | dense_gate_up_proj | 8 | 7.99 | 63.9 | 48.9 | 2.2% | 76.6% |
+> | dense_gate_up_proj | 16 | 15.95 | 127.6 | 95.0 | 4.2% | 74.5% |
+> | dense_gate_up_proj | 64 | 63.20 | 505.6 | 366.8 | 16.3% | 72.5% |
+> | dense_gate_up_proj | 256 | 243.61 | 1948.9 | 1015.5 | 45.1% | 52.1% |
+> | dense_gate_up_proj | 1024 | 850.88 | 2250.0 | 1142.2 | 50.8% | 16.8% |
+> | dense_gate_up_proj | 4096 | 2258.18 | 2250.0 | 1166.8 | 51.9% | 6.5% |
+> | dense_gate_up_proj | 16384 | 3850.16 | 2250.0 | 1302.8 | 57.9% | 4.2% |
+> | dense_gate_up_proj | 65536 | 4673.92 | 2250.0 | 1309.5 | 58.2% | 3.5% |
+>
+> (a) 小 M 区域下降十分明显，M≤16 时各投影的计算峰值达成率都很低；M=64/256 仍是过渡区。除 K=128 的 `f_b_proj` 外，多数投影在 M≈4096–16384 后进入约 1.0–1.3 PFLOPS 的平台，M=65536 时约为理论计算峰值的 56%–60%；`in_proj_qkvgfab` 在 M=1024 已接近其平台。这个范围与本次 148 SM、动态时钟、默认 cuBLAS 算法共同相关，并非通用 token 阈值。
+>
+> (b) 所有 M≤256 的行按上述 roofline 都在 memory 一侧；但“理论上 memory bound”不等于“已打满 HBM”。大权重的 `dense_gate_up_proj` 在 M≤64 时带宽 roof 达成率约 70%–77%，`in_proj_qkvgfab`、`dense_down_proj` 约 50%–62%，权重供数限制最直接。`q_b_proj` 与 `f_b_proj` 连带宽 roof 也很低，启动、tile 利用率和短归约占更大比例。这里的 GB/s 是模型字节量除以耗时，包含缓存复用，不能等同于 NCU 的物理 DRAM 流量。
+>
+> (c) `f_b_proj` 的 K 只有 128，$AI$ 随 M 增大仍最多趋近 $1536\times128/(1536+128)=118.15$ FLOP/B，达不到 281.25 的平衡点；其 memory roof 本来就只有约 945 TFLOPS。小 M 时可用并行度和有效 tile 占比不足，大 M 时短 K 仍让 prologue/epilogue、输出写回与调度难以摊薄，所以两个 roof 的达成率都不高。
+>
+> (d) 在 M≤16 的 decode 中，同一权重只被少量 token 复用，读取权重已占主要成本，Tensor Core 的计算峰值很难兑现；窄形状还让 TMA、同步和 tile 准备的固定开销变得显著。这为题面所述 skinny CUDA Core 分支提供了解释，但本实验只实测 cuBLAS，未直接实现或计时 vLLM skinny kernel，因此不从本表宣称其具体加速倍数。
+
 ::: lookback
 
 4.1--4.3 从同一个 GEMM 出发，依次加入 tiling、TMA 和多级 pipeline。
@@ -649,7 +779,7 @@ uv run python kernels/quant_outlier.py
 
 | 采样点 $x\approx$ | 0.5 | 0.1 | 0.01 | 0.005 | 3000 |
 |---|---|---|---|---|---|
-| 相对误差 | | | | | |
+| 相对误差 | 4.611e-2 | 4.634e-2 | 3.085e-1 | 1.000 | 0 |
 
 根据实验结果回答：
 
@@ -660,6 +790,14 @@ uv run python kernels/quant_outlier.py
 (c) 改用 1×128 的 per-block scale 后，包含 outlier 的 block 与不包含
 outlier 的 block 分别有什么变化？
 
+
+> `kernels/quant_outlier.py` 已完成 per-tensor E4M3 的量化、反量化、最近采样点相对误差，以及去 outlier、边界点与 128 元素分块实验；原始结果见 `quant_outlier.txt`。
+>
+> (a) 在同一个最接近 0.5 的采样点，去掉 outlier 后相对误差为 $3.08632181\times10^{-4}$，含 outlier 时约 $4.611\times10^{-2}$，误差缩小 149.41 倍。这是该固定 seed 的采样点结果，不是任意 0.5 附近输入的固定倍率。
+>
+> (b) E4M3 最小正次正规数为 $2^{-9}$，RN-even 的零区间满足 $|x|\le s2^{-10}$，边界 tie 也舍入到零。本例 $s=3000/448=6.69642857$，阈值为 0.00653948103；阈值两侧及恰在阈值处的实测反量化结果依次为 0、0、0.01307896245。零张量单独返回零，避免 scale=0 时出现 0/0。
+>
+> (c) 不含 outlier 的前 9984 个值，分块后平均相对误差为 0.0220541，低于 per-tensor 的 0.0379851；本 seed 中没有普通元素被分块量化成零。outlier 落在最后一个仅含 17 个有效元素的 block，其中 16 个普通元素与 per-tensor 结果逐值一致，平均相对误差仍为 0.0257169，因为这个 block 的 amax 仍由 3000 决定。改善的是污染范围，不能声称含 outlier 的 block 也恢复精度。
 
 ### 5.2 {.prob type=DERIVE file=kernels/block_scale_sim.py}
 
@@ -700,6 +838,21 @@ $N \times \lceil K/SV \rceil$，每个 scale 负责连续的 16 或 32 个 K
 结合 5.1(c) 的误差，说明粒度 16 相对粒度 128 有什么优势，又增加了
 多少 scale metadata 与供数复杂度。
 
+> 两个 fp64 模拟函数已完成，`uv run pytest tests/test_block_scale.py` 的三项判测通过；其中第三项确认题面提供的“最后只乘第一段 scale”反例确实错误。结果保存在 `block_scale.txt`。
+>
+> (a) 令 $A_{mk}=s^A_m\hat A_{mk}$、$B_{nk}=s^B_n\hat B_{nk}$，则
+>
+> \[
+> C_{mn}=s^A_ms^B_n\sum_k\hat A_{mk}\hat B_{nk},\qquad
+> C_{mn}=\sum_q s^A_{mq}s^B_{nq}\left(\sum_{k\in q}\hat A_{mk}\hat B_{nk}\right).
+> \]
+>
+> 前式的 scale 乘积对整个点积为常数，后式只在各 K block 内为常数；不同段的乘积不能从完整 K 和式提出。分段改变浮点加法分组，所以以 fp64 容差判等，不要求 bit-exact。
+>
+> (b) 硬件每次沿 K 消费一段连续操作数，并把该段乘积归约到输出；让 scale 与这段 K 对齐，就能对一次局部累加统一缩放，同时使数据、scale 的地址递进与内循环一致。[CUTLASS 的 SM100 block-scaled GEMM 说明](https://docs.nvidia.com/cutlass/latest/media/docs/cpp/blackwell_functionality.html)给出的布局正是 A 的 $M\times\lceil K/SV\rceil$ 与 B 的 $N\times\lceil K/SV\rceil$，SV 为 16 或 32。
+>
+> (c) 在同一输出通道、同一 scale 编码下，K 粒度由 128 改为 16 后，单个 outlier 最多影响的连续元素范围缩小到八分之一，更能保住同一行其他区域的小值。代价是 scale 数量与字节数增至 8 倍：一字节 SF 从 1/128 B/elem 增至 1/16 B/elem，需要更频繁的 scale 供数和 swizzled 寻址。DeepSeek-V3 的 128×128 还共享了输出通道方向，与 NVFP4 直接按完整二维块比较不能仅说“8 倍”；8 倍只描述 K 向粒度变化，若连通道共享也取消，metadata 差异还会放大。
+
 ### 5.3 {.prob type=FROM-SCRATCH file=cuda/m5_lowprec/}
 
 完成一条 NVFP4 量化通路。开始前先阅读 `nvfp4_common.h` 中给出的格式约定：
@@ -722,6 +875,8 @@ cd assignment02/cuda
 make run/m5_lowprec/03a_encode_check
 ```
 
+> 已在 `e2m1_encode.h` 实现 host/device 共用编码器，保留负零符号，大幅值饱和至 6。七个正中点 0.25/0.75/1.25/1.75/2.5/3.5/5.0 分别选择编码 0/2/2/4/4/6/6，再附加符号位，避免用普通四舍五入破坏 RN-even。`03a_encode_check` 的全部 202,864 个候选值与 GPU 硬件逐位一致。
+
 #### (b) NVFP4 quant kernel
 
 在 `nvfp4_quant_kernel.h` 中实现 quant kernel，完成
@@ -743,6 +898,10 @@ make run/m5_lowprec/test_fp4_gemm
 输出的舍入误差。如果 SF 布局错位或 scale 对应到了错误的量化组，
 通常会出现成块的明显数值错误，而不是仅有小幅舍入误差。
 
+> 量化 kernel 每线程处理一个连续 16 元素组，以两次 16 B 读入和一次 8 B 打包写回；先将 amax/6 舍入为 E4M3，再使用这个已舍入 scale 求倒数，设备转换采用 `__nv_fp4x2_e2m1`。SF 通过题面 `sf_swizzled_offset` 写入，padding 保留调用端清零值。
+>
+> `03b_nvfp4_quant` 的 128×1024、200×4096、4096×7168 全部 `PASS(bad=0)`，同时比较数据和 SF 字节；`test_fp4_gemm` 三个形状全部 PASS，maxrel 分别为 3.880e-3、3.891e-3、3.880e-3，符合 bf16 输出舍入量级。额外的 1×16、3×48、129×80 覆盖尾部组、M padding、正负零和微小值，量化与 XOR probe 均逐字节零误差。
+
 #### (c) Ceiling probe
 
 在 `03c_ceiling_probe.cu` 中实现一个 ceiling probe。它与 quant kernel
@@ -756,6 +915,18 @@ make run/m5_lowprec/test_fp4_gemm
 
 结合 Nsight Compute 判断 quant kernel 距离自己的访存上限还有多远，
 以及剩余差距主要来自访存还是计算。
+
+> 探针与 quant 共用完全相同的 group/grid 划分、两次 16 B 输入读、一次 8 B 数据写与 swizzled SF 字节写，输入的八个 uint32 都参与 XOR；`quant_edges.txt` 对输出和 padding 进行了逐字节检查。带宽统一按 2.5625 B/elem 计算。
+>
+> | 形状 | probe μs | probe GB/s | quant μs | quant GB/s | quant/probe 带宽比 |
+> |---|---:|---:|---:|---:|---:|
+> | 4096×7168 | 16.86 | 4462 | 22.92 | 3282 | 0.736 |
+> | 16384×4096 | 39.00 | 4410 | — | — | — |
+> | 16384×8192 | 72.17 | 4765 | — | — | — |
+>
+> 后两行是探针自身的额外形状，原始 03b 没有这两行 quant 计时，因此不拼接不同形状计算比值。同形状量化吞吐约为探针的 73.6%，仍有数值转换、amax 归约、倒数和打包开销。
+>
+> NCU 在 4096×7168 上的 quant/probe 时长为 26.496/20.352 μs，SM 吞吐 53.75%/25.57%，DRAM 吞吐 29.32%/38.26%，L2 字节数约 134.65/133.60 MB。两者数据路径相近而 quant 的 SM 开销明显更高，剩余差距更符合转换与指令吞吐开销，不能归因为已经打满 HBM；SF 分散写的 transaction 成本也限制两者。常规计时是预热后的重复访问，本形状工作集约 75.24 MB，小于约 132.64 MB L2，NCU 的清缓存测量口径不同；有效 GB/s 不是物理 HBM 利用率。
 
 #### (d) Optional
 
@@ -833,6 +1004,46 @@ make run/m5_lowprec/04_fused_rms_nvfp4
 
 本题不设置性能门槛。实现首先需要保证正确，评分重点放在实验设计和性能归因。
 
+> 融合实现为 block-per-row，整行分段保留在寄存器中，完成平方和归约后直接以 fp32 归一化值生成 E4M3 SF 与 E2M1 数据，不写 bf16 中间矩阵。两步基线保留题面 bf16 中间值，因此分别与各自语义的 host 参考比较；融合和基线都检查了 SF，不能仅检查数据 nibble 而漏掉 scale。
+>
+> 每个形状分别扫描 fused/RMS 的 block=128/256/512 与 grid=min(M,SM×1/2/4/8) 或 M；quant 另扫 block=128/256、grid=min(groups/block,SM×4/8/16) 或完整 grid。配置从各自计时结果选出后重新对拍；`fused_rms.txt` 保存所有候选和最终配置。此处是所列搜索空间中的最佳观测值，并不声称全局最优。
+>
+> | M×K | 两步 μs | 融合 μs | 加速比 | 同形状 probe μs | 融合/probe 有效带宽 | 融合 data/SF 错字节 |
+> |---|---:|---:|---:|---:|---:|---:|
+> | 1×4096 | 8.21 | 4.11 | 2.00× | 4.112 | 99.99% | 0/0 |
+> | 16×4096 | 8.23 | 5.41 | 1.52× | 4.112 | 75.97% | 0/0 |
+> | 256×4096 | 10.26 | 6.16 | 1.66× | 4.112 | 66.75% | 0/0 |
+> | 1024×4096 | 14.35 | 10.25 | 1.40× | 6.160 | 60.10% | 0/0 |
+> | 4096×4096 | 32.85 | 23.53 | 1.40× | 12.362 | 52.54% | 0/0 |
+> | 16384×4096 | 101.25 | 85.97 | 1.18× | 39.091 | 45.47% | 6/1 |
+> | 4096×7168 | 53.20 | 32.85 | 1.62× | 17.182 | 52.30% | 3/0 |
+> | 16384×7168 | 165.30 | 129.13 | 1.28× | 63.695 | 49.33% | 5/1 |
+> | 4096×8192 | 57.40 | 35.87 | 1.60× | 18.670 | 52.05% | 6/2 |
+> | 16384×8192 | 180.99 | 137.07 | 1.32× | 72.042 | 52.56% | 2/1 |
+>
+> 十个形状全部通过题面 $10^{-4}$ 错字节比例容差；极少数不同来自平方和浮点归约顺序与量化边界，不能把这些 PASS 写成全部 bit-exact。探针带宽与融合带宽同取 2.5625 B/elem，因此比值直接等于 $t_{\mathrm{probe}}/t_{\mathrm{fused}}$，没有用原始 5.3(c) 的某一大形状时间代替其他形状。
+>
+> 配置记为 `block线程数/grid块数`：
+>
+> | M×K | fused | RMS baseline | quant baseline |
+> |---|---|---|---|
+> | 1×4096 | 256/1 | 512/1 | 128/2 |
+> | 16×4096 | 512/16 | 512/16 | 256/16 |
+> | 256×4096 | 512/256 | 128/256 | 256/256 |
+> | 1024×4096 | 256/592 | 128/1024 | 128/1184 |
+> | 4096×4096 | 256/592 | 128/4096 | 128/2368 |
+> | 16384×4096 | 256/1184 | 128/16384 | 256/2368 |
+> | 4096×7168 | 256/592 | 128/4096 | 256/2368 |
+> | 16384×7168 | 256/1184 | 128/16384 | 256/2368 |
+> | 4096×8192 | 256/1184 | 128/4096 | 256/2368 |
+> | 16384×8192 | 256/1184 | 128/16384 | 256/2368 |
+>
+> M=1/16 时，输入很小，完整 GPU 并行度没有展开，减少一次 launch 的收益最明显；比值主要由固定开销决定，不遵循大矩阵访存模型。M=256/1024 处，行归约、warp/block 同步与可用 block 数开始共同决定吞吐；输入输出也大多能驻留缓存，节省的 4 B/elem 不全来自 HBM。
+>
+> M≥4096 后，吞吐逐渐受寄存器驻留、FP32 归约、SF/E2M1 转换和非连续 SF 写共同约束。NCU 在 16384×8192 上记录 fused kernel 63 registers/thread、SM 吞吐 65.40%、DRAM 吞吐 30.28%、L2 流量约 609.61 MB；物理 DRAM 读约 268.55 MB，与单次输入读取量相符，没有把中间 bf16 矩阵偷偷写回。该 profiling 独立调参选到 256/592，而常规计时配置以本表为准，profiling 的 140.160 μs 不替代常规计时。
+>
+> 按流量计算的 $6.5625/2.5625=2.56098\times$ 隐含两边都受同一层带宽限制、且没有新增计算/寄存器代价。本实现的 probe 比例仅约一半，说明减少字节数后仍有大量非纯搬运成本；基线第一步还会重读输入以完成归约后的写回，其中一部分由缓存承担。权重读量在题面 B/elem 模型中未单独计入，对大 M 可摊薄，对小 M 更不能忽略。因此这组 kernel 级收益不能直接推成完整 vLLM 模型的端到端加速。
+
 Optional：根据分析得到的主要瓶颈进行一次针对性优化，重新测试并更新表格。
 
 :::
@@ -853,6 +1064,12 @@ NVFP4 GEMM。
 
 每问用两到三句话回答。
 
+
+> (a) W4A16 + Marlin 属于存储量化：权重以 int4 保存，进入 Tensor Core 前解量化到 fp16，主要 GEMM 算术仍为 fp16；NVFP4 属于计算量化，A/B 数据以 E2M1 配合 SF 被 FP4 Tensor Core 路径直接消费。[Marlin 的实现说明](https://github.com/IST-DASLab/marlin)也将解量化与 Tensor Core 指令的协同排布作为核心优化。
+>
+> (b) Marlin 主要减少权重显存容量与权重读取带宽，扣除 scale 等 metadata 后压缩率略低于纯 4 倍，但不会将 fp16 Tensor Core 峰值变为 int4/FP4 峰值；解量化还消耗指令。NVFP4 同时减少量化操作数容量与带宽，并可使用 FP4 计算吞吐，代价是激活量化、SF metadata 和相应供数成本。
+>
+> (c) 对 4.5 的小 batch decode，减少权重读取字节的收益最直接，因此存储量化本身已经能触及主要瓶颈，不需要先兑现更高计算峰值。NVFP4 同样可能因权重压缩受益，但其额外计算吞吐只有在并行度和供数足够时才有价值，还需扣除动态激活量化成本；不能仅按 FP4/BF16 峰值之比预测加速。
 
 # TileLang 对照
 
@@ -875,10 +1092,10 @@ NVFP4 GEMM。
 
 | | sm_90a | sm_100a |
 |---|---|---|
-| 选中的 Tensor Core 指令 | | |
-| descriptor 在哪里、由谁生成 | | |
-| smem swizzle 布局在哪一步确定 | | |
-| 数据由谁搬入 smem | | |
+| 选中的 Tensor Core 指令 | `wgmma.mma_async`，m64n128k16/fp16→f32 | `mma.sync`，m16n8k16/fp16→f32；本例没有 tcgen05 |
+| descriptor 在哪里、由谁生成 | host lowering 生成 TMA tensor-map 构造参数，runtime 创建；device code 生成 A/B `GmmaDescriptor` | host/runtime 同样生成 TMA tensor map；MMA 用寄存器 fragment，不需要 WGMMA/tcgen05 的 SMEM matrix descriptor |
+| smem swizzle 布局在哪一步确定 | `LayoutInference` 选择，`LowerTileOp` 落到 descriptor/TMA 与索引代码 | 同样在布局推断确定，lowering 生成配套 `ldmatrix`/`.trans` 寻址 |
+| 数据由谁搬入 smem | 编译器生成 producer warpgroup，由 TMA 搬运，mbarrier 同步 | 同样由 producer warpgroup 发起 TMA；随后 `ldmatrix` 装入 MMA fragment |
 
 与 M2--M4 中的手写实现进行对照，并回答：
 
@@ -889,6 +1106,14 @@ NVFP4 GEMM。
 最后在 assignment01 7.5 的“谁负责”表中补充一行：
 
 `Tensor Core 指令选择与供数布局`
+
+> 使用 assignment01 的 `make_matmul(1024,1024,1024)`，tile=128×128×64、threads=128、stages=3、fp16 输入/fp32 输出；通过 `kernels/lower_matmul.py` 在固定 TileLang 0.1.13 上分别对 `sm_90a`、`sm_100a` 完成实际 device compilation。生成 CUDA 和 host/device TIR 位于 `results/2026-09-09/tilelang/`，`tilelang_compile.txt` 对两个目标均报告 PASS；本题按要求只编译，没有在 B300 上运行 sm_90a 代码。
+>
+> 这里必须区分 TMA tensor map 与 Tensor Core 的 SMEM matrix descriptor：两种 target 都有 `__grid_constant__ CUtensorMap`，不代表两者都选了 descriptor 型 MMA。sm_90a 的源码显式构造 `GmmaDescriptor` 并调用 `wgmma_ss`；sm_100a 的 device TIR 明确出现 `ptx_ldmatrix`、`ptx_mma("m16n8k16",...)`，不能凭架构名称把答案填成 tcgen05。
+>
+> (a) 这次 lowering 自动完成指令选择、fragment 分布、swizzle/descriptor 编码、TMA、mbarrier 与软件流水，还自动插入 producer/consumer warp specialization：源码虽然请求 128 threads，最终 kernel 使用 256 threads。A/B 各三个 16 KiB stage，共 98,304 B 动态 SMEM，配套六个 barrier；这些都可直接与 M2–M4 的手写状态对应。
+>
+> (b) 程序员仍决定矩阵语义、dtype、tile 尺寸、初始线程配置、stages 和目标架构，并用实测判断是否需要改变数据布局或采用其他 GEMM primitive。DSL 隐藏了大量硬件细节，但这份默认 lowering 并未替程序员选择出 SM100 的 tcgen05 通路。assignment01 的 `answer.md` 第 7.5 节已补入“Tensor Core 指令选择与供数布局”一行，区分用户语义/配置与编译器具体实现的责任。
 
 <!-- 编者注：TileLang 对 sm_100 codegen 的支持范围需在发布前根据
 README 中固定的版本重新核实。 -->

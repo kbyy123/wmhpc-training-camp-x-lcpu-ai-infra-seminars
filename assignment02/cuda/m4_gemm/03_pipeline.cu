@@ -39,6 +39,10 @@
 #include <vector>
 #include "../common.h"
 
+#ifndef CTA_GROUP
+#define CTA_GROUP 1
+#endif
+
 #ifndef STAGES
 #define STAGES 3
 #endif
@@ -80,38 +84,13 @@ __device__ inline bool mbar_try(uint32_t mbar, uint32_t phase) {
     return done;
 }
 
-__global__ void gemm_pipeline(const __nv_bfloat16* gA, const __nv_bfloat16* gB,
-                              float* gD, int M, int N, int K,
-                              const __grid_constant__ CUtensorMap tmapA,
-                              const __grid_constant__ CUtensorMap tmapB) {
-    extern __shared__ uint8_t smem_raw[];
-    uint8_t* smem =
-        (uint8_t*)(((uintptr_t)smem_raw + 1023) & ~(uintptr_t)1023);
-
-    // TODO:把你 4.2 的 kernel 扩成 NSTAGE 级流水。参考结构:
-    // (1) smem 划成 NSTAGE 段,stage s 的 A/B 起点自己排;mbarrier 每
-    //     stage 两个:full[s](TMA 到达)、empty[s](mma 消费完成)
-    // (2) 预热:先发 min(NSTAGE, iters) 轮 TMA(发第 it 轮 = 对 stage
-    //     it%NSTAGE 做 arrive.expect_tx + 两条 cp.async.bulk.tensor)
-    // (3) 主循环 it:
-    //     - 强制发射:若第 it 轮 TMA 还没发,阻塞等 empty[it%NSTAGE]
-    //       后补发(见文件头 hazard;empty 的 parity 按该 stage 被复用
-    //       的轮次算,第一次复用等的是上一轮使用的完成)
-    //     - 机会式深预取:try_wait 下一个待发 stage 的 empty,成功就
-    //       继续发,失败立刻停,不许阻塞
-    //     - 等 full[it%NSTAGE](parity = (it/NSTAGE)&1)→ tcgen05.fence
-    //       → mma(与 4.2 相同,累加位口径不变)→ commit 到
-    //       empty[it%NSTAGE]
-    // (4) drain:等最后一轮 mma 的 empty 到达,再进 epilogue
-    (void)gA; (void)gB; (void)gD; (void)M; (void)N; (void)K;
-    (void)tmapA; (void)tmapB; (void)smem;
-}
+#include "pipeline_core.h"
 
 int main(int argc, char** argv) {
     int M = argc > 3 ? atoi(argv[1]) : 4096;
     int N = argc > 3 ? atoi(argv[2]) : 4096;
     int K = argc > 3 ? atoi(argv[3]) : 4096;
-    if (M % BM || N % BN || K % BK) {
+    if (M <= 0 || N <= 0 || K <= 0 || M % (BM*CTA_GROUP) || N % BN || K % BK) {
         printf("形状需按 %dx%dx%d 对齐\n", BM, BN, BK);
         return 1;
     }
@@ -131,18 +110,76 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpy(dB, hB.data(), nB * 2, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemset(dD, 0xFF, nD * 4));
 
-    // TODO:tensor map 从你的 4.2 原样复制。
+    uint64_t dimsA[2] = {static_cast<uint64_t>(K), static_cast<uint64_t>(M)};
+    uint64_t dimsB[2] = {static_cast<uint64_t>(K), static_cast<uint64_t>(N)};
+    uint64_t strides[1] = {static_cast<uint64_t>(K) * 2};
+    uint32_t boxA[2] = {BK, BM}, boxB[2] = {BK, BROWS};
+    uint32_t elementStrides[2] = {1, 1};
+
     CUtensorMap tmapA = {}, tmapB = {};
+    // 文档见 https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html#group__CUDA__TENSOR__MEMORY_1ga7c7d2aaac9e49294304e755e6f341d7
+    CUresult resultA = cuTensorMapEncodeTiled(&tmapA,
+        CU_TENSOR_MAP_DATA_TYPE_BFLOAT16,
+        2,
+        dA,
+        dimsA,
+        strides,
+        boxA,
+        elementStrides,
+        CU_TENSOR_MAP_INTERLEAVE_NONE,
+        CU_TENSOR_MAP_SWIZZLE_128B,
+        CU_TENSOR_MAP_L2_PROMOTION_NONE,
+        CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE
+    );
+
+    CUresult resultB = cuTensorMapEncodeTiled(&tmapB,
+        CU_TENSOR_MAP_DATA_TYPE_BFLOAT16,
+        2,
+        dB,
+        dimsB,
+        strides,
+        boxB,
+        elementStrides,
+        CU_TENSOR_MAP_INTERLEAVE_NONE,
+        CU_TENSOR_MAP_SWIZZLE_128B,
+        CU_TENSOR_MAP_L2_PROMOTION_NONE,
+        CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE
+    );
+
+    if (resultA != CUDA_SUCCESS || resultB != CUDA_SUCCESS) {
+        fprintf(stderr, "Tensor map encode failed: A=%d, B=%d\n",
+                static_cast<int>(resultA),
+                static_cast<int>(resultB));
+        return 1;
+    }
+
 
     dim3 grid(M / BM, N / BN);
     // NSTAGE=3 时 72KB+对齐余量,超 48KB 静态上限,动态 smem 必须。
-    size_t smemBytes = (size_t)NSTAGE * (BM + BN) * BK * 2 + 1024;
+    size_t smemBytes = (size_t)NSTAGE * STAGE_BYTES + 1024;
     CUDA_CHECK(cudaFuncSetAttribute(gemm_pipeline,
                                     cudaFuncAttributeMaxDynamicSharedMemorySize,
                                     (int)smemBytes));
+    cudaLaunchConfig_t cfg = {};
+    cfg.gridDim=grid; cfg.blockDim=dim3(128); cfg.dynamicSmemBytes=smemBytes;
+    cudaLaunchAttribute attr = {};
+    attr.id=cudaLaunchAttributeClusterDimension;
+    attr.val.clusterDim={CTA_GROUP,1,1}; cfg.attrs=&attr; cfg.numAttrs=1;
+    int resident=0;
+#if CTA_GROUP == 1
+    CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&resident,gemm_pipeline,128,smemBytes));
+#else
+    CUDA_CHECK(cudaOccupancyMaxActiveClusters(&resident,gemm_pipeline,&cfg));
+#endif
+    printf("resources group=%d S=%d dynamic_smem=%zu resident_%s=%d\n",CTA_GROUP,NSTAGE,smemBytes,
+           CTA_GROUP==1?"blocks_per_SM":"clusters_device",resident);
     auto launch = [&] {
-        gemm_pipeline<<<grid, 128, smemBytes>>>(dA, dB, dD, M, N, K, tmapA,
-                                                tmapB);
+#if CTA_GROUP == 1
+        gemm_pipeline<<<grid,128,smemBytes>>>(dA,dB,dD,M,N,K,tmapA,tmapB);
+#else
+        CUDA_CHECK(cudaLaunchKernelEx(&cfg,gemm_pipeline,(const __nv_bfloat16*)dA,
+                   (const __nv_bfloat16*)dB,dD,M,N,K,tmapA,tmapB));
+#endif
     };
     launch();
     CUDA_CHECK_KERNEL();
@@ -172,10 +209,12 @@ int main(int argc, char** argv) {
         },
         iters);
     double cub_tflops = 2.0 * M * N * K / (cub_ms * 1e9);
-    printf("[4.3 pipeline S=%d] M=%d N=%d K=%d  %s(bad=%ld)  %.2f ms  %.1f "
+    printf("[pipeline group=%d S=%d] M=%d N=%d K=%d  %s(bad=%ld)  %.6f ms  %.1f "
            "TFLOPS  (cuBLAS %.1f, 达成率 %.0f%%)\n",
-           NSTAGE, M, N, K, bad ? "FAIL" : "PASS", bad, ms, tflops,
+           CTA_GROUP, NSTAGE, M, N, K, bad ? "FAIL" : "PASS", bad, ms, tflops,
            cub_tflops, 100.0 * tflops / cub_tflops);
+    CUDA_CHECK_KERNEL();
+    cudaFree(dA); cudaFree(dB); cudaFree(dD); cudaFree(dRef);
     cublasDestroy(h);
     return bad != 0;
 }

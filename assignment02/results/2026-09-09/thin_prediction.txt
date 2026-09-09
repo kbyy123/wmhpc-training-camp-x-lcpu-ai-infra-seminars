@@ -1,0 +1,1 @@
+PASS: wrote 63 roofline predictions; peak=2250 TFLOPS, bandwidth=8000 GB/s

@@ -1,0 +1,6 @@
+edge quant M=1 K=16 PASS bad=0
+edge probe M=1 K=16 PASS bad=0
+edge quant M=3 K=48 PASS bad=0
+edge probe M=3 K=48 PASS bad=0
+edge quant M=129 K=80 PASS bad=0
+edge probe M=129 K=80 PASS bad=0

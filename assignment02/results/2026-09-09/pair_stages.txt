@@ -1,0 +1,36 @@
+resources group=2 S=3 dynamic_smem=62464 resident_clusters_device=74
+[pipeline group=2 S=3] M=256 N=64 K=64  PASS(bad=0)  0.016414 ms  0.1 TFLOPS  (cuBLAS 0.5, 达成率 25%)
+resources group=2 S=3 dynamic_smem=62464 resident_clusters_device=74
+[pipeline group=2 S=3] M=256 N=128 K=128  PASS(bad=0)  0.016416 ms  0.5 TFLOPS  (cuBLAS 2.1, 达成率 25%)
+resources group=2 S=3 dynamic_smem=62464 resident_clusters_device=74
+[pipeline group=2 S=3] M=256 N=128 K=320  PASS(bad=0)  0.022561 ms  0.9 TFLOPS  (cuBLAS 5.0, 达成率 19%)
+resources group=2 S=3 dynamic_smem=62464 resident_clusters_device=74
+[pipeline group=2 S=3] M=1024 N=1024 K=1024  PASS(bad=0)  0.045386 ms  47.3 TFLOPS  (cuBLAS 301.6, 达成率 16%)
+resources group=2 S=3 dynamic_smem=62464 resident_clusters_device=74
+[pipeline group=2 S=3] M=4096 N=4096 K=4096  PASS(bad=0)  0.808456 ms  170.0 TFLOPS  (cuBLAS 1056.4, 达成率 16%)
+resources group=2 S=3 dynamic_smem=62464 resident_clusters_device=74
+[pipeline group=2 S=3] M=256 N=4096 K=16384  PASS(bad=0)  0.501865 ms  68.5 TFLOPS  (cuBLAS 693.2, 达成率 10%)
+resources group=2 S=6 dynamic_smem=123904 resident_clusters_device=74
+[pipeline group=2 S=6] M=256 N=64 K=64  PASS(bad=0)  0.016416 ms  0.1 TFLOPS  (cuBLAS 0.5, 达成率 27%)
+resources group=2 S=6 dynamic_smem=123904 resident_clusters_device=74
+[pipeline group=2 S=6] M=256 N=128 K=128  PASS(bad=0)  0.016826 ms  0.5 TFLOPS  (cuBLAS 2.0, 达成率 25%)
+resources group=2 S=6 dynamic_smem=123904 resident_clusters_device=74
+[pipeline group=2 S=6] M=256 N=128 K=320  PASS(bad=0)  0.020574 ms  1.0 TFLOPS  (cuBLAS 5.1, 达成率 20%)
+resources group=2 S=6 dynamic_smem=123904 resident_clusters_device=74
+[pipeline group=2 S=6] M=1024 N=1024 K=1024  PASS(bad=0)  0.043048 ms  49.9 TFLOPS  (cuBLAS 299.2, 达成率 17%)
+resources group=2 S=6 dynamic_smem=123904 resident_clusters_device=74
+[pipeline group=2 S=6] M=4096 N=4096 K=4096  PASS(bad=0)  1.779667 ms  77.2 TFLOPS  (cuBLAS 1062.2, 达成率 7%)
+resources group=2 S=6 dynamic_smem=123904 resident_clusters_device=74
+[pipeline group=2 S=6] M=256 N=4096 K=16384  PASS(bad=0)  0.494452 ms  69.5 TFLOPS  (cuBLAS 694.4, 达成率 10%)
+resources group=2 S=10 dynamic_smem=205824 resident_clusters_device=74
+[pipeline group=2 S=10] M=256 N=64 K=64  PASS(bad=0)  0.016416 ms  0.1 TFLOPS  (cuBLAS 0.5, 达成率 26%)
+resources group=2 S=10 dynamic_smem=205824 resident_clusters_device=74
+[pipeline group=2 S=10] M=256 N=128 K=128  PASS(bad=0)  0.018464 ms  0.5 TFLOPS  (cuBLAS 2.0, 达成率 23%)
+resources group=2 S=10 dynamic_smem=205824 resident_clusters_device=74
+[pipeline group=2 S=10] M=256 N=128 K=320  PASS(bad=0)  0.021250 ms  1.0 TFLOPS  (cuBLAS 5.0, 达成率 20%)
+resources group=2 S=10 dynamic_smem=205824 resident_clusters_device=74
+[pipeline group=2 S=10] M=1024 N=1024 K=1024  PASS(bad=0)  0.041031 ms  52.3 TFLOPS  (cuBLAS 301.6, 达成率 17%)
+resources group=2 S=10 dynamic_smem=205824 resident_clusters_device=74
+[pipeline group=2 S=10] M=4096 N=4096 K=4096  PASS(bad=0)  1.761542 ms  78.0 TFLOPS  (cuBLAS 1062.2, 达成率 7%)
+resources group=2 S=10 dynamic_smem=205824 resident_clusters_device=74
+[pipeline group=2 S=10] M=256 N=4096 K=16384  PASS(bad=0)  0.494798 ms  69.4 TFLOPS  (cuBLAS 688.6, 达成率 10%)

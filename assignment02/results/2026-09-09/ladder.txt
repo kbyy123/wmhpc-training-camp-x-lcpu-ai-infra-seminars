@@ -1,0 +1,2 @@
+[4.1 tiled] M=4096 N=4096 K=4096  PASS(bad=0)  4.46 ms  30.8 TFLOPS  (cuBLAS 1057.3, 达成率 3%)
+[4.2 tma] M=4096 N=4096 K=4096  PASS(bad=0)  0.33 ms  416.1 TFLOPS  (cuBLAS 1057.2, 达成率 39%)

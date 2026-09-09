@@ -1,0 +1,11 @@
+含 outlier:
+  x≈0.5      rel_err=4.611e-02
+  x≈0.1      rel_err=4.634e-02
+  x≈0.01     rel_err=3.085e-01
+  x≈0.005    rel_err=1.000e+00
+  x≈3000.0   rel_err=0.000e+00
+without_outlier err_at_0.5=0.000308632181 ratio_with/without=149.40993
+scale=6.69642857 zero_threshold=0.00653948103 probes=[0.0, 0.0, 0.013078962452709675]
+clean_blocks mean_relative=0.0220540948 max_relative=0.0588137209 zeros=0 per_tensor_mean=0.0379850976
+outlier_block_clean mean_relative=0.0257169176 max_relative=0.0514201596 zeros=0 per_tensor_mean=0.0257169176
+outlier_block_size=17 outlier_rel=0

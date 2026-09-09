@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/lcpu/60403270/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/lcpu/60403270/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02
+configfile: pyproject.toml
+collecting ... collected 3 items
+
+tests/test_block_scale.py::test_per_row_col_restores_once PASSED         [ 33%]
+tests/test_block_scale.py::test_along_k_restores_each_partial_sum PASSED [ 66%]
+tests/test_block_scale.py::test_along_k_cannot_restore_only_once PASSED  [100%]
+
+============================== 3 passed in 1.09s ===============================

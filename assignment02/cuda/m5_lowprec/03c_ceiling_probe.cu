@@ -15,18 +15,7 @@
 #include "../common.h"
 #include "nvfp4_common.h"
 
-template <int BLOCK>
-__global__ void probe_kernel(const __nv_bfloat16* __restrict__ in,
-                             uint8_t* __restrict__ dataOut,
-                             uint8_t* __restrict__ sfOut, int M, int K) {
-    // TODO: 与你的 quant kernel 同形的访存,xor 直通,无数学。
-}
-
-static void launch_probe(const __nv_bfloat16* in, uint8_t* dataOut,
-                         uint8_t* sfOut, int M, int K, int sms) {
-    // TODO: 启动配置。
-    (void)in; (void)dataOut; (void)sfOut; (void)M; (void)K; (void)sms;
-}
+#include "ceiling_probe.h"
 
 int main() {
     int sms;

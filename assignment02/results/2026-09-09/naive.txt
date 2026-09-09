@@ -1,0 +1,1 @@
+naive original BS=16 4096^3 PASS bad=0 40.233799 ms 3.4160 TFLOPS

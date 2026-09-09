@@ -1,0 +1,10 @@
+PASS: 202864 values match hardware
+M=128   K=1024   PASS(bad=0)      4.11 us      82 GB/s
+M=200   K=4096   PASS(bad=0)      4.11 us     510 GB/s
+M=4096  K=7168   PASS(bad=0)     22.92 us    3282 GB/s
+M=128   N=128   K=1024   maxrel=3.880e-03  PASS
+M=256   N=512   K=4096   maxrel=3.891e-03  PASS
+M=200   N=128   K=1024   maxrel=3.880e-03  PASS
+M=4096   K=7168   probe    16.86 us    4462 GB/s
+M=16384  K=4096   probe    39.00 us    4410 GB/s
+M=16384  K=8192   probe    72.17 us    4765 GB/s
