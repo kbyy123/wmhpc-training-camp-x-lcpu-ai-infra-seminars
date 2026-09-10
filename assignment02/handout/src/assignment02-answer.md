@@ -730,6 +730,18 @@ uv run python kernels/quant_outlier.py
 (c) 改用 1×128 的 per-block scale 后，包含 outlier 的 block 与不包含
 outlier 的 block 分别有什么变化？
 
+含 outlier:
+  x≈0.5      rel_err=4.611e-02
+  x≈0.1      rel_err=4.634e-02
+  x≈0.01     rel_err=3.085e-01
+  x≈0.005    rel_err=1.000e+00
+  x≈3000.0   rel_err=0.000e+00
+不含 outlier:
+  x≈0.5      rel_err=3.086e-04
+  x≈0.1      rel_err=1.795e-02
+  x≈0.01     rel_err=4.795e-03
+  x≈0.005    rel_err=1.581e-02
+  x≈3000.0   rel_err=5.961e-08
 
 ### 5.2 {.prob type=DERIVE file=kernels/block_scale_sim.py}
 

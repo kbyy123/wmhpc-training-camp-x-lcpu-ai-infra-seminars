@@ -26,7 +26,9 @@ def quant_dequant_per_tensor(x: torch.Tensor) -> torch.Tensor:
     TODO: 实现。步骤:算 scale = amax / 448;除 scale 后 cast 到
     torch.float8_e4m3fn;cast 回 float 再乘 scale。
     """
-    raise NotImplementedError
+    scale = torch.amax(x.abs()) / E4M3_MAX
+    q = (x / scale).to(torch.float8_e4m3fn)
+    return q.float() * scale
 
 
 def rel_err_at(x: torch.Tensor, y: torch.Tensor, value: float) -> float:
@@ -34,15 +36,20 @@ def rel_err_at(x: torch.Tensor, y: torch.Tensor, value: float) -> float:
 
     TODO: 实现(表格的每一格都从这里来)。
     """
-    raise NotImplementedError
-
+    idx = (x - value).abs().argmin()
+    return ((y[idx] - x[idx]) / x[idx]).abs().item()
 
 def main() -> None:
     x = build_tensor()
+    z = build_tensor(outlier=0.0)
     y = quant_dequant_per_tensor(x)
+    w = quant_dequant_per_tensor(z)
     print("含 outlier:")
     for v in (0.5, 0.1, 0.01, 0.005, 3000.0):
         print(f"  x≈{v:<8} rel_err={rel_err_at(x, y, v):.3e}")
+    print("不含 outlier:")
+    for v in (0.5, 0.1, 0.01, 0.005, 3000.0):
+        print(f"  x≈{v:<8} rel_err={rel_err_at(z, w, v):.3e}")
     # (a) 去掉 outlier 重新量化,对比 0.5 处的误差
     # (b) 找出被量化成 0 的阈值,写出它与 scale 的关系式
     # (c) 换 1x128 的 per-block scale,对比含/不含 outlier 的 block
