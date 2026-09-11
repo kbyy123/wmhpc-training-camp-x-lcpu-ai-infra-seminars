@@ -1127,6 +1127,21 @@ Optional：根据分析得到的主要瓶颈进行一次针对性优化，重新
 
 :::
 
+60403270@dev-slurm:~/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda$ make run/m5_lowprec/04_fused_rms_nvfp4
+nvcc -O2 -std=c++17 -I. --expt-relaxed-constexpr -gencode arch=compute_100f,code=sm_100f -o bin/m5_lowprec/04_fused_rms_nvfp4 m5_lowprec/04_fused_rms_nvfp4.cu
+./bin/m5_lowprec/04_fused_rms_nvfp4
+# M      K        2step_us   fused_us  speedup
+  1      4096         8.21       4.11    2.00x PASS(bad=0)
+  16     4096         8.21       4.11    2.00x PASS(bad=0)
+  256    4096         8.20       4.11    2.00x PASS(bad=0)
+  1024   4096        15.40       8.53    1.80x PASS(bad=0)
+  4096   4096        41.07      23.61    1.74x PASS(bad=2)
+  16384  4096       163.31     103.04    1.58x PASS(bad=0)
+  4096   7168        72.02      32.80    2.20x PASS(bad=1)
+  16384  7168       264.43     133.02    1.99x PASS(bad=9)
+  4096   8192        79.77      34.97    2.28x PASS(bad=1)
+  16384  8192       289.08     140.11    2.06x PASS(bad=11)
+rm bin/m5_lowprec/04_fused_rms_nvfp4
 
 ### 5.5 {.prob type=CONCEPT}
 

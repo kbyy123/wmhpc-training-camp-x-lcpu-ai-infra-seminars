@@ -51,7 +51,6 @@ __global__ void nvfp4_quant_kernel(const __nv_bfloat16* __restrict__ in,
     float inv = sf != 0 ? 1.0f / sf : 0.0f;
     sfOut[sf_swizzled_offset(row, col_group, ktiles)] = sf8.__x;
     
-    // 16 * tid ~ 16 * tid + 15
     #pragma unroll
     for (int i = 0; i < 8; i += 1) {
         float2 pair = make_float2(__bfloat162float(in[16 * tid + 2 * i]) * inv, __bfloat162float(in[16 * tid + 2 * i + 1]) * inv);

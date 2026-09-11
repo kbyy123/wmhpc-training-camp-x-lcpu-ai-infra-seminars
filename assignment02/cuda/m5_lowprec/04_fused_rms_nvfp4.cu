@@ -39,6 +39,7 @@ __global__ void rms_norm_baseline_kernel(const __nv_bfloat16* __restrict__ in,
         float ss = 0.f;
         for (int k = threadIdx.x * 8; k < K; k += BLOCK * 8) {
             float4 raw = *reinterpret_cast<const float4*>(xr + k);
+            // 向量化访存后，再打包成 4 对 bf16，转化为 4 对 fp32 再计算
             const __nv_bfloat162* h =
                 reinterpret_cast<const __nv_bfloat162*>(&raw);
 #pragma unroll
@@ -62,6 +63,7 @@ __global__ void rms_norm_baseline_kernel(const __nv_bfloat16* __restrict__ in,
         for (int k = threadIdx.x * 8; k < K; k += BLOCK * 8) {
             float4 raw = *reinterpret_cast<const float4*>(xr + k);
             float4 raww = *reinterpret_cast<const float4*>(w + k);
+            
             const __nv_bfloat162* h =
                 reinterpret_cast<const __nv_bfloat162*>(&raw);
             const __nv_bfloat162* hw =
@@ -83,12 +85,109 @@ __global__ void rms_norm_baseline_kernel(const __nv_bfloat16* __restrict__ in,
 }
 
 // TODO(核心):融合 kernel。签名自定,在 launch_fused 里接上。
+template <int BLOCK>
+__global__ void rms_norm_fused_kernel(const __nv_bfloat16* in, const __nv_bfloat16* w,
+                         uint8_t* dataOut, uint8_t* sfOut, int M, int K,
+                         float eps) {
+    // TODO
+    // 一个 block 处理 M / gridDim.x 行
+    __shared__ float red[BLOCK / 32];
+
+    for (int row = blockIdx.x; row < M; row += gridDim.x) {
+        const __nv_bfloat16* xr = in + (size_t)row * K;
+        float ss = 0.0f;
+        for (int k = threadIdx.x * 16; k < K; k += blockDim.x * 16) {
+            float4 raw[2];
+            raw[0] = *reinterpret_cast<const float4*>(xr + k);
+            raw[1] = *reinterpret_cast<const float4*>(xr + k + 8);
+            const __nv_bfloat16* h = reinterpret_cast<__nv_bfloat16*>(raw);
+            #pragma unroll
+            for (int i = 0; i < 16; i++) {
+                float v = __bfloat162float(h[i]);
+                ss += v * v;
+           }
+        }
+        // warp 内部 reduce
+        #pragma unroll
+        for (int o = 16; o; o >>= 1) {
+            ss += __shfl_down_sync(~0u, ss, o);
+        }
+        // warp 内 lane 0 存入 SMEM
+        if ((threadIdx.x & 31) == 0) {
+            red[threadIdx.x / 32] = ss;
+        }
+        __syncthreads();
+        // 单个 warp 对 red 进行规约，由于 BLOCK <= 1024，所以 red 最大为 32，可以由单个 warp 规约
+        // 每个 lane 拿取一个数组元素，若数组大小 < 32 则需要 padding 0
+        if (threadIdx.x < 32) {
+            ss = threadIdx.x < BLOCK / 32 ? red[threadIdx.x] : 0.0f;
+            #pragma unroll
+            for (int o = 16; o; o >>= 1) {
+                ss += __shfl_down_sync(~0u, ss, o);
+            }
+        }
+        if (threadIdx.x == 0) {
+            red[0] = ss;
+        }
+        __syncthreads();
+        float rnorm = 1.0f / sqrtf(red[0] / K + eps);
+        
+        for (int k = threadIdx.x * 16; k < K; k += blockDim.x * 16) {
+            float4 rawx[2], raww[2];
+            rawx[0] = *reinterpret_cast<const float4*>(xr + k);
+            rawx[1] = *reinterpret_cast<const float4*>(xr + k + 8);
+            raww[0] = *reinterpret_cast<const float4*>(w + k);
+            raww[1] = *reinterpret_cast<const float4*>(w + k + 8);
+            
+            const __nv_bfloat16* hx = reinterpret_cast<__nv_bfloat16*>(&rawx);
+            const __nv_bfloat16* hw = reinterpret_cast<__nv_bfloat16*>(&raww);
+            
+            float group[16];
+
+            // 和 baseline 一样：x * w * rnorm 全部用 float，结果转成 bf16 舍入
+            // group 再转一次，是为了方便后续的 quant 操作，后面就不用再转了
+            // *但实际上，测试使用的是 host 端，而 host 段并没有采用 bf16 舍入，导致会出错
+            // 叫 AI 重写了 host 端，根据不同的舍入结果是不同的
+            #pragma unroll
+            for (int i = 0; i < 16; i++) {
+                float x = __bfloat162float(hx[i]);
+                float weight = __bfloat162float(hw[i]);
+                
+                group[i] = __bfloat162float(__float2bfloat16_rn(x * rnorm * weight));
+                // group[i] = x * rnorm * weight;
+            }
+
+            int col_group = k / 16;
+            int ktiles = nvfp4_num_ktiles(K);
+
+            float amax = 0.0;
+            for (int i = 0; i < 16; i++) {
+                float v = group[i];
+                amax = fmaxf(amax, fabsf(v)); 
+            }
+            
+            // .__x 表示原始 bit
+            __nv_fp8_e4m3 sf8 = __nv_fp8_e4m3(amax / 6.0f);
+            float sf = float(sf8);
+            float inv = sf != 0 ? 1.0f / sf : 0.0f;
+            sfOut[sf_swizzled_offset(row, col_group, ktiles)] = sf8.__x;
+            
+            #pragma unroll
+            for (int i = 0; i < 8; i += 1) {
+                float2 pair = make_float2(group[2 * i] * inv, group[2 * i + 1] * inv);
+                __nv_fp4x2_e2m1 packed(pair);
+                dataOut[(size_t)row * K / 2 + col_group * 8 + i] = packed.__x;
+            }
+        }
+        __syncthreads();
+    }
+}
+
 static void launch_fused(const __nv_bfloat16* in, const __nv_bfloat16* w,
                          uint8_t* dataOut, uint8_t* sfOut, int M, int K,
                          float eps, int sms) {
-    // TODO
-    (void)in; (void)w; (void)dataOut; (void)sfOut; (void)M; (void)K;
-    (void)eps; (void)sms;
+    int grid = M < sms ? M : sms * 2;
+    rms_norm_fused_kernel<512><<<grid, 512>>>(in, w, dataOut, sfOut, M, K, eps);
 }
 
 // TODO(公平基线):两步各自的最优启动配置。默认给的是一个起点。
@@ -101,35 +200,80 @@ static void launch_two_step(const __nv_bfloat16* in, const __nv_bfloat16* w,
     launch_nvfp4_quant(mid, dataOut, sfOut, M, K, sms);
 }
 
-static void host_ref(const std::vector<float>& x, const std::vector<float>& w,
-                     int M, int K, float eps, std::vector<uint8_t>& data) {
-    int numKTiles = nvfp4_num_ktiles(K);
-    (void)numKTiles;
+static void host_ref(const std::vector<float>& x,
+                     const std::vector<float>& w,
+                     int M, int K, float eps,
+                     std::vector<uint8_t>& data) {
     data.assign((size_t)M * K / 2, 0);
-    for (int r = 0; r < M; r++) {
-        double ss = 0;
-        for (int k = 0; k < K; k++) {
+
+    for (int r = 0; r < M; ++r) {
+        // 用 double 求平方和；与 GPU 归约可能有微小舍入差异
+        double ss = 0.0;
+        for (int k = 0; k < K; ++k) {
             double v = x[(size_t)r * K + k];
             ss += v * v;
         }
-        float rnorm = 1.0f / sqrtf((float)(ss / K) + eps);
-        for (int g = 0; g < K / NVFP4_GROUP; g++) {
-            float vals[NVFP4_GROUP], amax = 0.f;
-            for (int i = 0; i < NVFP4_GROUP; i++) {
+
+        float rnorm = 1.0f / sqrtf(static_cast<float>(ss / K) + eps);
+
+        for (int g = 0; g < K / NVFP4_GROUP; ++g) {
+            float vals[NVFP4_GROUP];
+            float amax = 0.0f;
+
+            for (int i = 0; i < NVFP4_GROUP; ++i) {
                 int k = g * NVFP4_GROUP + i;
-                vals[i] = x[(size_t)r * K + k] * rnorm * w[k];
+                float y = x[(size_t)r * K + k] * rnorm * w[k];
+
+                // 关键：模拟 baseline 写出 BF16、quant 再读回 float
+                vals[i] = __bfloat162float(__float2bfloat16_rn(y));
+
                 amax = fmaxf(amax, fabsf(vals[i]));
             }
-            __nv_fp8_e4m3 sf8 = __nv_fp8_e4m3(amax / 6.0f);
-            float s = float(sf8);
-            float inv = s != 0.f ? 1.0f / s : 0.f;
-            for (int i = 0; i < NVFP4_GROUP; i += 2)
-                data[(size_t)r * K / 2 + g * 8 + i / 2] =
-                    (uint8_t)(e2m1_encode(vals[i + 1] * inv) << 4 |
-                              e2m1_encode(vals[i] * inv));
+
+            __nv_fp8_e4m3 sf8(amax / 6.0f);
+            float sf = float(sf8);
+            float inv = sf != 0.0f ? 1.0f / sf : 0.0f;
+
+            for (int i = 0; i < NVFP4_GROUP; i += 2) {
+                uint8_t lo = e2m1_encode(vals[i] * inv);
+                uint8_t hi = e2m1_encode(vals[i + 1] * inv);
+
+                data[(size_t)r * (K / 2) + g * 8 + i / 2] =
+                    static_cast<uint8_t>((hi << 4) | lo);
+            }
         }
     }
 }
+
+// static void host_ref(const std::vector<float>& x, const std::vector<float>& w,
+//                      int M, int K, float eps, std::vector<uint8_t>& data) {
+//     int numKTiles = nvfp4_num_ktiles(K);
+//     (void)numKTiles;
+//     data.assign((size_t)M * K / 2, 0);
+//     for (int r = 0; r < M; r++) {
+//         double ss = 0;
+//         for (int k = 0; k < K; k++) {
+//             double v = x[(size_t)r * K + k];
+//             ss += v * v;
+//         }
+//         float rnorm = 1.0f / sqrtf((float)(ss / K) + eps);
+//         for (int g = 0; g < K / NVFP4_GROUP; g++) {
+//             float vals[NVFP4_GROUP], amax = 0.f;
+//             for (int i = 0; i < NVFP4_GROUP; i++) {
+//                 int k = g * NVFP4_GROUP + i;
+//                 vals[i] = x[(size_t)r * K + k] * rnorm * w[k];
+//                 amax = fmaxf(amax, fabsf(vals[i]));
+//             }
+//             __nv_fp8_e4m3 sf8 = __nv_fp8_e4m3(amax / 6.0f);
+//             float s = float(sf8);
+//             float inv = s != 0.f ? 1.0f / s : 0.f;
+//             for (int i = 0; i < NVFP4_GROUP; i += 2)
+//                 data[(size_t)r * K / 2 + g * 8 + i / 2] =
+//                     (uint8_t)(e2m1_encode(vals[i + 1] * inv) << 4 |
+//                               e2m1_encode(vals[i] * inv));
+//         }
+//     }
+// }
 
 int main() {
     int sms;
