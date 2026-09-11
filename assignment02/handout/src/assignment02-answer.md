@@ -825,6 +825,15 @@ make run/m5_lowprec/test_fp4_gemm
 输出的舍入误差。如果 SF 布局错位或 scale 对应到了错误的量化组，
 通常会出现成块的明显数值错误，而不是仅有小幅舍入误差。
 
+60403270@b300-login:~/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda$ srun -G 1 --time 00:15:00 make run/m5_lowprec/03b_nvfp4_quant
+srun: job 26119 queued and waiting for resources
+srun: job 26119 has been allocated resources
+nvcc -O2 -std=c++17 -I. --expt-relaxed-constexpr -gencode arch=compute_100f,code=sm_100f -o bin/m5_lowprec/03b_nvfp4_quant m5_lowprec/03b_nvfp4_quant.cu
+./bin/m5_lowprec/03b_nvfp4_quant
+M=128   K=1024   PASS(bad=0)      6.10 us      55 GB/s
+M=200   K=4096   PASS(bad=0)      6.16 us     341 GB/s
+M=4096  K=7168   PASS(bad=0)     65.62 us    1147 GB/s
+
 #### (c) Ceiling probe
 
 在 `03c_ceiling_probe.cu` 中实现一个 ceiling probe。它与 quant kernel
@@ -838,6 +847,205 @@ make run/m5_lowprec/test_fp4_gemm
 
 结合 Nsight Compute 判断 quant kernel 距离自己的访存上限还有多远，
 以及剩余差距主要来自访存还是计算。
+
+60403270@b300-login:~/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda$ srun -G 1 --time 00:15:00 make run/m5_lowprec/03c_ceiling_probe
+srun: job 26149 queued and waiting for resources
+srun: job 26149 has been allocated resources
+nvcc -O2 -std=c++17 -I. --expt-relaxed-constexpr -gencode arch=compute_100f,code=sm_100f -o bin/m5_lowprec/03c_ceiling_probe m5_lowprec/03c_ceiling_probe.cu
+./bin/m5_lowprec/03c_ceiling_probe
+M=4096   K=7168   probe    36.91 us    2038 GB/s
+M=16384  K=4096   probe    75.78 us    2269 GB/s
+M=16384  K=8192   probe   147.48 us    2332 GB/s
+rm bin/m5_lowprec/03c_ceiling_probe
+
+60403270@dev-slurm:~/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda$ ncu --kernel-name regex:nvfp4_quant_kernel \
+    --launch-skip 463 --launch-count 1 \
+    --section SpeedOfLight \
+    --section ComputeWorkloadAnalysis \
+    --section MemoryWorkloadAnalysis \
+    --section Occupancy \
+    ./bin/m5_lowprec/03b_nvfp4_quant
+==PROF== Connected to process 1017465 (/home/lcpu/60403270/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda/bin/m5_lowprec/03b_nvfp4_quant)
+M=128   K=1024   PASS(bad=0)    140.85 us       2 GB/s
+M=200   K=4096   PASS(bad=0)    141.86 us      15 GB/s
+==PROF== Profiling "nvfp4_quant_kernel": 0%....50%....100% - 14 passes
+M=4096  K=7168   PASS(bad=0)  25737.48 us       3 GB/s
+==PROF== Disconnected from process 1017465
+[1017465] 03b_nvfp4_quant@127.0.0.1
+  void nvfp4_quant_kernel<256>(const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int) (7168, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: GPU Speed Of Light Throughput
+    ----------------------- ----------- ------------
+    Metric Name             Metric Unit Metric Value
+    ----------------------- ----------- ------------
+    DRAM Frequency                  Ghz         3.99
+    SM Frequency                    Ghz         1.06
+    Elapsed Cycles                cycle        72852
+    Memory Throughput                 %        88.58
+    DRAM Throughput                   %        11.60
+    Duration                         us        66.85
+    L1/TEX Cache Throughput           %        97.93
+    L2 Cache Throughput               %        13.02
+    SM Active Cycles              cycle     64420.29
+    Compute (SM) Throughput           %        23.53
+    ----------------------- ----------- ------------
+
+    INF   This workload is utilizing greater than 80.0% of the available compute or memory performance of the device.   
+          To further improve performance, work will likely need to be shifted from the most utilized to another unit.   
+          Start by analyzing L1 in the Memory Workload Analysis section.                                                
+
+    Section: Compute Workload Analysis
+    -------------------- ----------- ------------
+    Metric Name          Metric Unit Metric Value
+    -------------------- ----------- ------------
+    Executed Ipc Active   inst/cycle         1.04
+    Executed Ipc Elapsed  inst/cycle         0.94
+    Issue Slots Busy               %        23.53
+    Issued Ipc Active     inst/cycle         1.04
+    SM Busy                        %        23.53
+    -------------------- ----------- ------------
+
+    OPT   Est. Local Speedup: 85.04%                                                                                    
+          All compute pipelines are under-utilized. Either this workload is very small or it doesn't issue enough warps 
+          per scheduler. Check the Launch Statistics and Scheduler Statistics sections for further details.             
+
+    Section: Memory Workload Analysis
+    -------------------------------------- ----------- ------------
+    Metric Name                            Metric Unit Metric Value
+    -------------------------------------- ----------- ------------
+    Local Memory Spilling Requests                                0
+    Local Memory Spilling Request Overhead           %      no data
+    Memory Throughput                          Gbyte/s       889.01
+    Mem Busy                                         %        88.58
+    Max Bandwidth                                    %        20.98
+    L1/TEX Hit Rate                                  %        90.09
+    L2 Persisting Size                           Mbyte        24.87
+    L2 Compression Success Rate                      %            0
+    L2 Compression Ratio                             %            0
+    L2 Compression Input Sectors                sector      1205467
+    L2 Hit Rate                                      %        23.61
+    Mem Pipes Busy                                   %        14.15
+    -------------------------------------- ----------- ------------
+
+    Section: Occupancy
+    ------------------------------- ----------- ------------
+    Metric Name                     Metric Unit Metric Value
+    ------------------------------- ----------- ------------
+    Max Active Clusters                 cluster            0
+    Max Cluster Size                      block            8
+    Overall GPU Occupancy                     %            0
+    Cluster Occupancy                         %            0
+    Block Limit Barriers                  block           32
+    Block Limit SM                        block           32
+    Block Limit Registers                 block            8
+    Block Limit Shared Mem                block           32
+    Block Limit Warps                     block            8
+    Theoretical Active Warps per SM        warp           64
+    Theoretical Occupancy                     %          100
+    Achieved Occupancy                        %        87.76
+    Achieved Active Warps Per SM           warp        56.16
+    ------------------------------- ----------- ------------
+
+    OPT   Est. Local Speedup: 12.24%                                                                                    
+          The difference between calculated theoretical (100.0%) and measured achieved occupancy (87.8%) can be the     
+          result of warp scheduling overheads or workload imbalances during the kernel execution. Load imbalances can   
+          occur between warps within a block as well as across blocks of the same kernel. See the CUDA Best Practices   
+          Guide (https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#occupancy) for more details on     
+          optimizing occupancy.                                                                                         
+
+60403270@dev-slurm:~/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda$ ncu --kernel-name regex:probe_kernel \
+    --launch-skip 20 --launch-count 1 \
+    --section SpeedOfLight \
+    --section ComputeWorkloadAnalysis \
+    --section MemoryWorkloadAnalysis \
+    --section Occupancy \
+    ./bin/m5_lowprec/03c_ceiling_probe
+==PROF== Connected to process 1018269 (/home/lcpu/60403270/wmhpc-training-camp-x-lcpu-ai-infra-seminars/assignment02/cuda/bin/m5_lowprec/03c_ceiling_probe)
+==PROF== Profiling "probe_kernel": 0%....50%....100% - 14 passes
+M=4096   K=7168   probe 25491.11 us       3 GB/s
+M=16384  K=4096   probe    75.82 us    2268 GB/s
+M=16384  K=8192   probe   147.56 us    2331 GB/s
+==PROF== Disconnected from process 1018269
+[1018269] 03c_ceiling_probe@127.0.0.1
+  void probe_kernel<256>(const __nv_bfloat16 *, unsigned char *, unsigned char *, int, int) (7168, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 10.3
+    Section: GPU Speed Of Light Throughput
+    ----------------------- ----------- ------------
+    Metric Name             Metric Unit Metric Value
+    ----------------------- ----------- ------------
+    DRAM Frequency                  Ghz         3.99
+    SM Frequency                    Ghz         1.07
+    Elapsed Cycles                cycle        71725
+    Memory Throughput                 %        90.57
+    DRAM Throughput                   %        11.80
+    Duration                         us        65.54
+    L1/TEX Cache Throughput           %        98.20
+    L2 Cache Throughput               %        17.53
+    SM Active Cycles              cycle     64656.94
+    Compute (SM) Throughput           %        15.34
+    ----------------------- ----------- ------------
+
+    INF   This workload is utilizing greater than 80.0% of the available compute or memory performance of the device.   
+          To further improve performance, work will likely need to be shifted from the most utilized to another unit.   
+          Start by analyzing L1 in the Memory Workload Analysis section.                                                
+
+    Section: Compute Workload Analysis
+    -------------------- ----------- ------------
+    Metric Name          Metric Unit Metric Value
+    -------------------- ----------- ------------
+    Executed Ipc Active   inst/cycle         0.67
+    Executed Ipc Elapsed  inst/cycle         0.61
+    Issue Slots Busy               %        15.34
+    Issued Ipc Active     inst/cycle         0.67
+    SM Busy                        %        15.34
+    -------------------- ----------- ------------
+
+    OPT   Est. Local Speedup: 86.46%                                                                                    
+          All compute pipelines are under-utilized. Either this workload is very small or it doesn't issue enough warps 
+          per scheduler. Check the Launch Statistics and Scheduler Statistics sections for further details.             
+
+    Section: Memory Workload Analysis
+    -------------------------------------- ----------- ------------
+    Metric Name                            Metric Unit Metric Value
+    -------------------------------------- ----------- ------------
+    Local Memory Spilling Requests                                0
+    Local Memory Spilling Request Overhead           %      no data
+    Memory Throughput                          Gbyte/s       904.73
+    Mem Busy                                         %        90.57
+    Max Bandwidth                                    %        29.33
+    L1/TEX Hit Rate                                  %        90.18
+    L2 Persisting Size                           Mbyte        24.87
+    L2 Compression Success Rate                      %            0
+    L2 Compression Ratio                             %            0
+    L2 Compression Input Sectors                sector      1837992
+    L2 Hit Rate                                      %        29.91
+    Mem Pipes Busy                                   %        14.37
+    -------------------------------------- ----------- ------------
+
+    Section: Occupancy
+    ------------------------------- ----------- ------------
+    Metric Name                     Metric Unit Metric Value
+    ------------------------------- ----------- ------------
+    Max Active Clusters                 cluster            0
+    Max Cluster Size                      block            8
+    Overall GPU Occupancy                     %            0
+    Cluster Occupancy                         %            0
+    Block Limit Barriers                  block           32
+    Block Limit SM                        block           32
+    Block Limit Registers                 block            8
+    Block Limit Shared Mem                block           32
+    Block Limit Warps                     block            8
+    Theoretical Active Warps per SM        warp           64
+    Theoretical Occupancy                     %          100
+    Achieved Occupancy                        %        88.35
+    Achieved Active Warps Per SM           warp        56.55
+    ------------------------------- ----------- ------------
+
+    OPT   Est. Local Speedup: 11.65%                                                                                    
+          The difference between calculated theoretical (100.0%) and measured achieved occupancy (88.4%) can be the     
+          result of warp scheduling overheads or workload imbalances during the kernel execution. Load imbalances can   
+          occur between warps within a block as well as across blocks of the same kernel. See the CUDA Best Practices   
+          Guide (https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#occupancy) for more details on     
+          optimizing occupancy.                                                                                         
+
 
 #### (d) Optional
 

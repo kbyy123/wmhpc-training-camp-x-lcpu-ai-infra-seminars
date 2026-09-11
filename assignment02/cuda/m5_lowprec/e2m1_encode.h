@@ -16,6 +16,33 @@
 
 __host__ __device__ inline uint8_t e2m1_encode(float v) {
     // TODO: 实现。返回 4 bit 编码(bit3 符号,bit0-2 幅值格点下标)。
-    (void)v;
-    return 0;
+    uint8_t result = 0;
+    if (signbit(v)) {
+        v *= -1;
+        result |= 8;
+    }
+    /*
+    [0, 0.5] --> 0
+    (0.5, 0.75) --> 0.5
+    [0.75, 1.25] --> 1
+    */
+    if (v <= 0.25) {
+        ;
+    } else if (v < 0.75) {
+        result |= 1;
+    } else if (v <= 1.25) {
+        result |= 2;
+    } else if (v < 1.75) {
+        result |= 3;
+    } else if (v <= 2.5) {
+        result |= 4;
+    } else if (v < 3.5) {
+        result |= 5;
+    } else if (v <= 5.0) {
+        result |= 6;
+    } else {
+        result |= 7;
+    }
+
+    return result;
 }
